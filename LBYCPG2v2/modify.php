@@ -78,14 +78,12 @@ $stmt = prepare_search_stmt($conn);
 $stmt->execute();
 $data = $stmt->get_result();
 
-
-$message = ''; // message to show after operation
-
+// Detect which form submitted based on a hidden input
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // Detect which form submitted based on a hidden input
     if (isset($_POST['action'])) {
         $action = $_POST['action'];
 
+        // Insert Functionality
         if ($action == 'insert') {
             $lname  = $_POST['lname'];
             $fname  = $_POST['fname'];
@@ -105,6 +103,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
         }
 
+        // Edit Functionality
         elseif ($action == 'edit') {
             $id      = $_POST['id'];
             $lname   = $_POST['lname'];
@@ -127,6 +126,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
         }
 
+        // Delete Functionality
         elseif ($action == 'delete') {
             $id = $_POST['id'];
             $sql = "DELETE FROM empdetails1 WHERE DataEntryID=$id";
@@ -442,6 +442,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 </head>
 <body>
 
+// --- Side Bar Menu Options ---
 <div class="sidebar">
     <div class="menu-title">Menu</div>
     <a href="PHP_Act_02.php" class="<?php echo basename($_SERVER['PHP_SELF']) == 'PHP_Act_02.php' ? 'active' : ''; ?>">Overview</a>
@@ -452,7 +453,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <h1>Modify Employee Data</h1>
 
     <div class="data-container">
-        <!-- Search and Filter -->
+        // -- Search and Filter --
         <div class="search-container">
             <form method="GET" class="searchBox" action="PHP_Act_02.php">
                 <select name="column">
@@ -475,7 +476,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             </form>
         </div>
 
-        <!-- Table -->
+        // -- Table --
         <div class="table-container">
             <table>
                 <tr>
@@ -515,7 +516,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         </div>
     </div>
 
-    <!-- Separate CRUD Section -->
+    // -- Separate CRUD Section --
         <div class="crud-container">
             <div class="tabs">
                 <div class="tab active" onclick="showTab('insert')">Insert</div>
@@ -546,11 +547,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <form class="modify-form"method="POST">
                     <input type="hidden" name="action" value="edit">
                     <input type="number" name="id" placeholder="DataEntryID to Edit" required>
-                    <input type="text" name="lname" placeholder="Last Name">
-                    <input type="text" name="fname" placeholder="First Name">
-                    <input type="date" name="sdate">
-                    <input type="text" name="snumber" placeholder="Shift No">
-                    <input type="number" name="hours" placeholder="Hours">
+                    <input type="text" name="lname" placeholder="Last Name" required>
+                    <input type="text" name="fname" placeholder="First Name" required>
+                    <input type="date" name="sdate" required>
+                    <input type="text" name="snumber" placeholder="Shift No" required>
+                    <input type="number" name="hours" placeholder="Hours" required>
                     <select name="dtype" required>
                         <option value="OnDuty">On Duty</option>
                         <option value="Overtime">Overtime</option>
