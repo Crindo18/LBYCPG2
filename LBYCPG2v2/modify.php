@@ -161,23 +161,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         color: #333;
     }
 
-    /* --- TOP BAR --- */
-    .topbar {
-        background-color: #f0f0f0; /* light gray close to white */
-        height: 10px;
-        width: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        padding: 0 20px;
-        border-bottom: 1px solid #ddd;
-        position: fixed;
-        top: 0;
-        left: 0;
-        z-index: 10;
-    }
-
-    /* --- SIDEBAR --- */
+    /* --- Sidebar CSS --- */
     .sidebar {
         position: fixed;
         top: 0;
@@ -217,7 +201,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         background-color: #40739e;
     }
 
-    /* --- MAIN CONTENT --- */
+    /* --- Main Content CSS --- */
     .content {
         margin-left: 220px;
         padding: 50px 20px 20px 20px; /* top space for topbar */
@@ -229,10 +213,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         text-align: left;
         color: #333;
         margin-top: 0;
-        margin-left: 5%;
+        margin-left: 35%;
     }
 
-    /* --- CONTENT CONTAINER (Search + Table) --- */
+    /* --- Content Container (Filter + Search + Table) CSS --- */
     .data-container {
         width: 90%;
         margin: 20px auto;
@@ -242,7 +226,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
 
-    /* --- SEARCH & FILTER --- */
+    /* --- Search & Filter CSS --- */
     .search-container {
         display: flex;
         flex-direction: column;
@@ -304,7 +288,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         background-color: #192a56;
     }
 
-    /* --- TABLE --- */
+    /* --- Table CSS --- */
     .table-container {
         width: 100%;
         max-height: 400px;
@@ -340,7 +324,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         background-color: #f2f2f2;
     }
 
-    /* CRUD Container */
+    /* CRUD Container CSS */
     .crud-container {
         width: 90%;
         margin: 20px auto;
@@ -352,7 +336,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         flex-direction: column;
     }
 
-    /* Tabs */
+    /* CRUD Tabs CSS */
     .tabs {
         display: flex;
         border-bottom: 3px solid #273c75;
