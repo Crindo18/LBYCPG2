@@ -11,13 +11,14 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
-// --- Helper: prepare the search statement ---
-function prepare_search_stmt($conn) {
+// this is the function for the search bar, already connected with the filter
+function searchBar($conn) {
     $search_raw = isset($_GET['search']) ? trim($_GET['search']) : '';
     $column_raw = isset($_GET['column']) ? $_GET['column'] : 'All';
     $allowed_columns = ['All','DataEntryID','LastName','FirstName','ShiftDate','ShiftNo','Hours','DutyType'];
 
     if ($search_raw !== '' && in_array($column_raw, $allowed_columns)) {
+        // if-then statement for filtering
         if ($column_raw === 'All') {
             $sql = "SELECT DataEntryID, LastName, FirstName, ShiftDate, ShiftNo, Hours, DutyType
                     FROM empdetails1
@@ -50,9 +51,9 @@ function prepare_search_stmt($conn) {
     return $stmt;
 }
 
-// --- CSV Export ---
+// if-then to export to csv
 if (isset($_GET['export']) && $_GET['export'] === 'csv') {
-    $stmt = prepare_search_stmt($conn);
+    $stmt = searchBar($conn);
     $stmt->execute();
     $result = $stmt->get_result();
 
@@ -73,12 +74,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     exit();
 }
 
-// --- Display Data ---
-$stmt = prepare_search_stmt($conn);
+// display data according to searchbar
+$stmt = searchBar($conn);
 $stmt->execute();
 $data = $stmt->get_result();
 
-// --- SQL: Summary Data (from Lab 1) ---
+// query for summary of salary
 $summary_sql = "
     SELECT LastName, FirstName,
         SUM(CASE WHEN DutyType IN ('OnDuty', 'Late') THEN Hours ELSE 0 END) AS NumberOfOnDutyHours,
@@ -103,6 +104,7 @@ $summary_stmt->execute();
 $summary_result = $summary_stmt->get_result();
 ?>
 
+<!-- CSS and HTML portion of the page -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -111,7 +113,7 @@ $summary_result = $summary_stmt->get_result();
     * {
         box-sizing: border-box;
     }
-
+    /* --- Body CSS --- */
     body {
         margin: 0;
         font-family: Arial, sans-serif;
@@ -165,7 +167,7 @@ $summary_result = $summary_stmt->get_result();
     /* --- Main Content CSS --- */
     .content {
         margin-left: 220px;
-        padding: 50px 20px 20px 20px; /* top space for topbar */
+        padding: 50px 20px 20px 20px;
         flex: 1;
         overflow-y: auto;
     }
@@ -322,7 +324,7 @@ $summary_result = $summary_stmt->get_result();
             </form>
         </div>
 
-        <!-- Database View Table -->
+        <!-- Table -->
         <div class="table-container">
             <table>
                 <tr>
@@ -350,7 +352,6 @@ $summary_result = $summary_stmt->get_result();
                         $rowCount++;
                     }
                 }
-                // Fill empty rows to keep table height consistent
                 for ($i = $rowCount; $i < 10; $i++) {
                     echo "<tr><td colspan='7'>&nbsp;</td></tr>";
                 }
@@ -388,7 +389,6 @@ $summary_result = $summary_stmt->get_result();
                     }
                 }
 
-                // Fill empty rows to keep table height consistent
                 for ($i = $rowCount; $i < 10; $i++) {
                     echo "<tr><td colspan='6'>&nbsp;</td></tr>";
                 }
