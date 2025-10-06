@@ -377,12 +377,6 @@ $data = $stmt->get_result();
         </div>
     </div>
 
-    <!-- Action Buttons -->
-    <div class="action-buttons">
-        <a href="insert.php">Insert</a>
-        <a href="edit.php">Edit</a>
-        <a href="delete.php">Delete</a>
-    </div>
 </div>
 
 </body>
