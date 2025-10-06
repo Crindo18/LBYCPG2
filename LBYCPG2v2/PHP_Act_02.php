@@ -366,7 +366,7 @@ $summary_result = $summary_stmt->get_result();
                 <tr>
                     <th>Last Name</th>
                     <th>First Name</th>
-                    <th>On-Duty Hours</th>
+                    <th>On Duty Hours</th>
                     <th>Overtime Hours</th>
                     <th>Late Days</th>
                     <th>Week Pay (₱)</th>
