@@ -200,21 +200,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     .sidebar a {
-    display: block;
-    padding: 12px 20px;
-    text-decoration: none;
-    color: #f5f6fa;
-    font-weight: 500;
-    transition: background 0.2s;
-}
-.sidebar a.active {
-    background-color: #273c75;
-    color: #ffffff;
-}
-.sidebar a:hover {
-    background-color: #40739e;
-}
+        display: block;
+        padding: 12px 20px;
+        text-decoration: none;
+        color: #f5f6fa;
+        font-weight: 500;
+        transition: background 0.2s;
+    }
 
+    .sidebar a.active {
+        background-color: #273c75;
+        color: #ffffff;
+    }
+
+    .sidebar a:hover {
+        background-color: #40739e;
+    }
 
     /* --- MAIN CONTENT --- */
     .content {
@@ -339,50 +340,50 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         background-color: #f2f2f2;
     }
 
-/* CRUD Container */
-.crud-container {
-    width: 90%;
-    margin: 20px auto;
-    background: #ffffff;
-    border-radius: 8px;
-    padding: 20px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-    display: flex;
-    flex-direction: column;
-}
+    /* CRUD Container */
+    .crud-container {
+        width: 90%;
+        margin: 20px auto;
+        background: #ffffff;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        display: flex;
+        flex-direction: column;
+    }
 
     /* Tabs */
-.tabs {
-    display: flex;
-    border-bottom: 3px solid #273c75;
-    margin-bottom: 15px;
-    justify-content: space-between;
-    width: 100%;
-}
+    .tabs {
+        display: flex;
+        border-bottom: 3px solid #273c75;
+        margin-bottom: 15px;
+        justify-content: space-between;
+        width: 100%;
+    }
 
-/* Make tabs expand equally across the container */
-.tab {
-    flex: 1; /* equal width */
-    text-align: center;
-    padding: 14px 0;
-    cursor: pointer;
-    background: #dcdde1;
-    border-top-left-radius: 10px;
-    border-top-right-radius: 10px;
-    font-weight: bold;
-    transition: 0.3s;
-    color: #333;
-}
+    /* Make tabs expand equally across the container */
+    .tab {
+        flex: 1; /* equal width */
+        text-align: center;
+        padding: 14px 0;
+        cursor: pointer;
+        background: #dcdde1;
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+        font-weight: bold;
+        transition: 0.3s;
+        color: #333;
+    }
 
-.tab:not(:last-child) {
-    margin-right: 5px;
-}
+    .tab:not(:last-child) {
+        margin-right: 5px;
+    }
 
-.tab.active {
-    background: #273c75;
-    color: white;
-    box-shadow: inset 0 -3px 0 #192a56;
-}
+    .tab.active {
+        background: #273c75;
+        color: white;
+        box-shadow: inset 0 -3px 0 #192a56;
+    }
 
     /* Hide all tab contents by default */
     .tab-content {
@@ -395,46 +396,47 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         display: flex;
     }
 
-/* Centered form */
-.modify-form {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    width: 100%;
-    max-width: 350px;
-    background: #f9f9f9;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
+    /* Centered form */
+    .modify-form {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: 100%;
+        max-width: 350px;
+        background: #f9f9f9;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
 
-.modify-form input,
-.modify-form select {
-    padding: 10px;
-    border-radius: 6px;
-    border: 1px solid #ccc;
-    font-size: 14px;
-}
+    .modify-form input,
+    .modify-form select {
+        padding: 10px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+        font-size: 14px;
+    }
 
-.modify-form input[type="submit"] {
-    background-color: #273c75;
-    color: white;
-    border: none;
-    cursor: pointer;
-    transition: 0.3s;
-}
-.modify-form input[type="submit"]:hover {
-    background-color: #192a56;
-}
+    .modify-form input[type="submit"] {
+        background-color: #273c75;
+        color: white;
+        border: none;
+        cursor: pointer;
+        transition: 0.3s;
+    }
 
-/* Delete button style */
-#delete input[type="submit"] {
-    background-color: #e84118;
-}
-#delete input[type="submit"]:hover {
-    background-color: #c23616;
-}
+    .modify-form input[type="submit"]:hover {
+        background-color: #192a56;
+    }
 
+    /* Delete button style */
+    #delete input[type="submit"] {
+        background-color: #e84118;
+    }
+
+    #delete input[type="submit"]:hover {
+        background-color: #c23616;
+    }
 
 </style>
 </head>

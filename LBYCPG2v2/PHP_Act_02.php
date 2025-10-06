@@ -136,21 +136,22 @@ $data = $stmt->get_result();
     }
 
     .sidebar a {
-    display: block;
-    padding: 12px 20px;
-    text-decoration: none;
-    color: #f5f6fa;
-    font-weight: 500;
-    transition: background 0.2s;
-}
-.sidebar a.active {
-    background-color: #273c75;
-    color: #ffffff;
-}
-.sidebar a:hover {
-    background-color: #40739e;
-}
+        display: block;
+        padding: 12px 20px;
+        text-decoration: none;
+        color: #f5f6fa;
+        font-weight: 500;
+        transition: background 0.2s;
+    }
 
+    .sidebar a.active {
+        background-color: #273c75;
+        color: #ffffff;
+    }
+
+    .sidebar a:hover {
+        background-color: #40739e;
+    }
 
     /* --- MAIN CONTENT --- */
     .content {
