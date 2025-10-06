@@ -1,4 +1,5 @@
 <?php
+
 // --- Configuration ---
 $servername = "localhost";
 $username = "root";
@@ -198,7 +199,6 @@ elseif ($action == 'edit') {
         }
     }
 }
-
 ?>
 
 <!DOCTYPE html>
@@ -512,7 +512,7 @@ elseif ($action == 'edit') {
     <h1>Modify Employee Data</h1>
 
     <div class="data-container">
-        // -- Search and Filter --
+        <!-- Search and Filter -->
         <div class="search-container">
             <form method="GET" class="searchBox" action="PHP_Act_02.php">
                 <select name="column">
@@ -535,7 +535,7 @@ elseif ($action == 'edit') {
             </form>
         </div>
 
-        // -- Table --
+        <!-- Table -->
         <div class="table-container">
             <table>
                 <tr>
@@ -575,7 +575,7 @@ elseif ($action == 'edit') {
         </div>
     </div>
 
-    // -- Separate CRUD Section --
+    <!-- Separate CRUD Section -->
         <div class="crud-container">
             <div class="tabs">
                 <div class="tab active" onclick="showTab('insert')">Insert</div>

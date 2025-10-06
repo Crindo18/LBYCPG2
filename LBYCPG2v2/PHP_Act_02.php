@@ -68,6 +68,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     }
     fclose($out);
     $stmt->close();
+    $conn->close();
     exit();
 }
 
@@ -393,9 +394,6 @@ $summary_result = $summary_stmt->get_result();
                 for ($i = $rowCount; $i < 10; $i++) {
                     echo "<tr><td colspan='7'>&nbsp;</td></tr>";
                 }
-
-                $stmt->close();
-                $conn->close();
                 ?>
             </table>
         </div>
@@ -416,6 +414,7 @@ $summary_result = $summary_stmt->get_result();
                     <th>Week Pay (₱)</th>
                 </tr>
                 <?php
+                $rowCount = 0;
                 if ($summary_result && $summary_result->num_rows > 0) {
                     while ($sumRow = $summary_result->fetch_assoc()) {
                         echo "<tr>
@@ -426,17 +425,23 @@ $summary_result = $summary_stmt->get_result();
                             <td>" . htmlspecialchars($sumRow['NumberOfLateDays']) . "</td>
                             <td>" . htmlspecialchars(number_format($sumRow['WeekPay'], 2)) . "</td>
                         </tr>";
+                        $rowCount++;
                     }
-                } else {
-                    echo "<tr><td colspan='6'>No data found</td></tr>";
                 }
+
+                // Fill empty rows to keep table height consistent
+                for ($i = $rowCount; $i < 10; $i++) {
+                    echo "<tr><td colspan='6'>&nbsp;</td></tr>";
+                }
+
+                $stmt->close();
+                $summary_stmt->close();
+                $conn->close();
                 ?>
             </table>
         </div>
     </div>
-    $conn->close();
 
 </div>
 </body>
 </html>
-
