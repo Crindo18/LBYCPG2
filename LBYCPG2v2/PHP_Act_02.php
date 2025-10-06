@@ -68,7 +68,6 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     }
     fclose($out);
     $stmt->close();
-    $conn->close();
     exit();
 }
 
@@ -76,6 +75,30 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
 $stmt = prepare_search_stmt($conn);
 $stmt->execute();
 $data = $stmt->get_result();
+
+// --- SECOND TABLE: SUMMARIZED DATA ---
+$summary_sql = "
+    SELECT LastName, FirstName,
+        SUM(CASE WHEN DutyType IN ('OnDuty', 'Late') THEN Hours ELSE 0 END) AS NumberOfOnDutyHours,
+        SUM(CASE WHEN DutyType = 'Overtime' THEN Hours ELSE 0 END) AS NumberOfOvertimeHours,
+        SUM(CASE WHEN DutyType = 'Late' THEN 1 ELSE 0 END) AS NumberOfLateDays,
+        SUM(
+            CASE
+                WHEN DutyType = 'OnDuty' AND Hours >= 8 THEN 685
+                WHEN DutyType = 'OnDuty' AND Hours < 8 THEN (685 / 8.0) * Hours
+                WHEN DutyType = 'Overtime' THEN ((685 / 8.0) * Hours) + 685
+                WHEN DutyType = 'Late' THEN ((685 / 8.0) * Hours) - 100
+                ELSE 0
+            END
+        ) AS WeekPay
+    FROM empdetails1
+    GROUP BY LastName, FirstName
+";
+
+$summary_result = $conn->query($summary_sql);
+$summary_stmt = $conn->prepare($summary_sql);
+$summary_stmt->execute();
+$summary_result = $summary_stmt->get_result();
 ?>
 
 <!DOCTYPE html>
@@ -338,7 +361,7 @@ $data = $stmt->get_result();
             </form>
         </div>
 
-        <!-- Table -->
+        <!-- Database View Table -->
         <div class="table-container">
             <table>
                 <tr>
@@ -378,8 +401,42 @@ $data = $stmt->get_result();
         </div>
     </div>
 
-</div>
+    <!-- Summary Table -->
+    <div class="data-container">
+        <h2 style="margin-left:10px;">Employee Summary</h2>
 
+        <div class="table-container">
+            <table>
+                <tr>
+                    <th>Last Name</th>
+                    <th>First Name</th>
+                    <th>On-Duty Hours</th>
+                    <th>Overtime Hours</th>
+                    <th>Late Days</th>
+                    <th>Week Pay (₱)</th>
+                </tr>
+                <?php
+                if ($summary_result && $summary_result->num_rows > 0) {
+                    while ($sumRow = $summary_result->fetch_assoc()) {
+                        echo "<tr>
+                            <td>" . htmlspecialchars($sumRow['LastName']) . "</td>
+                            <td>" . htmlspecialchars($sumRow['FirstName']) . "</td>
+                            <td>" . htmlspecialchars($sumRow['NumberOfOnDutyHours']) . "</td>
+                            <td>" . htmlspecialchars($sumRow['NumberOfOvertimeHours']) . "</td>
+                            <td>" . htmlspecialchars($sumRow['NumberOfLateDays']) . "</td>
+                            <td>" . htmlspecialchars(number_format($sumRow['WeekPay'], 2)) . "</td>
+                        </tr>";
+                    }
+                } else {
+                    echo "<tr><td colspan='6'>No data found</td></tr>";
+                }
+                ?>
+            </table>
+        </div>
+    </div>
+    $conn->close();
+
+</div>
 </body>
 </html>
 
