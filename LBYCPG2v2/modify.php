@@ -197,6 +197,8 @@ $data = $stmt->get_result();
         background-color: #f5f6fa;
         color: #333;
     }
+
+    /* --- Sidebar CSS --- */
     .topbar {
         background-color: #f0f0f0; /* light gray close to white */
         height: 10px;

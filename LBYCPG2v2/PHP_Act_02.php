@@ -77,7 +77,7 @@ $stmt = prepare_search_stmt($conn);
 $stmt->execute();
 $data = $stmt->get_result();
 
-// --- SECOND TABLE: SUMMARIZED DATA ---
+// --- SQL: Summary Data (from Lab 1) ---
 $summary_sql = "
     SELECT LastName, FirstName,
         SUM(CASE WHEN DutyType IN ('OnDuty', 'Late') THEN Hours ELSE 0 END) AS NumberOfOnDutyHours,
@@ -121,23 +121,7 @@ $summary_result = $summary_stmt->get_result();
         color: #333;
     }
 
-    /* --- TOP BAR --- */
-    .topbar {
-        background-color: #f0f0f0; /* light gray close to white */
-        height: 10px;
-        width: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        padding: 0 20px;
-        border-bottom: 1px solid #ddd;
-        position: fixed;
-        top: 0;
-        left: 0;
-        z-index: 10;
-    }
-
-    /* --- SIDEBAR --- */
+    /* --- Sidebar CSS --- */
     .sidebar {
         position: fixed;
         top: 0;
@@ -177,7 +161,7 @@ $summary_result = $summary_stmt->get_result();
         background-color: #40739e;
     }
 
-    /* --- MAIN CONTENT --- */
+    /* --- Main Content CSS --- */
     .content {
         margin-left: 220px;
         padding: 50px 20px 20px 20px; /* top space for topbar */
@@ -189,10 +173,10 @@ $summary_result = $summary_stmt->get_result();
         text-align: left;
         color: #333;
         margin-top: 0;
-        margin-left: 5%;
+        margin-left: 30%;
     }
 
-    /* --- CONTENT CONTAINER (Search + Table) --- */
+    /* --- Content Container (Filter + Search + Table) CSS --- */
     .data-container {
         width: 90%;
         margin: 20px auto;
@@ -202,7 +186,7 @@ $summary_result = $summary_stmt->get_result();
         box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
 
-    /* --- SEARCH & FILTER --- */
+    /* --- Search & Filter CSS --- */
     .search-container {
         display: flex;
         flex-direction: column;
@@ -264,7 +248,7 @@ $summary_result = $summary_stmt->get_result();
         background-color: #192a56;
     }
 
-    /* --- TABLE --- */
+    /* --- Table CSS --- */
     .table-container {
         width: 100%;
         max-height: 400px;
@@ -298,31 +282,6 @@ $summary_result = $summary_stmt->get_result();
 
     tr:nth-child(even) {
         background-color: #f2f2f2;
-    }
-
-    /* --- ACTION BUTTONS BELOW TABLE --- */
-    .action-buttons {
-        width: 80%;
-        margin: 20px auto;
-        display: flex;
-        justify-content: center;
-        gap: 15px;
-    }
-
-    .action-buttons a {
-        background-color: #192a56;
-        color: white;
-        padding: 12px 20px;
-        text-decoration: none;
-        border-radius: 5px;
-        font-size: 16px;
-        min-width: 100px;
-        text-align: center;
-        transition: 0.2s;
-    }
-
-    .action-buttons a:hover {
-        background-color: #192a56;
     }
 
 </style>
@@ -400,15 +359,14 @@ $summary_result = $summary_stmt->get_result();
     </div>
 
     <!-- Summary Table -->
+    <h1 style="margin-left:450px; margin-top:60px;">Employee Summary</h1>
     <div class="data-container">
-        <h2 style="margin-left:10px;">Employee Summary</h2>
-
         <div class="table-container">
             <table>
                 <tr>
                     <th>Last Name</th>
                     <th>First Name</th>
-                    <th>On-Duty Hours</th>
+                    <th>On Duty Hours</th>
                     <th>Overtime Hours</th>
                     <th>Late Days</th>
                     <th>Week Pay (₱)</th>
