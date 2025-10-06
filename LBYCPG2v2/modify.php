@@ -1,4 +1,5 @@
 <?php
+
 // --- Configuration ---
 $servername = "localhost";
 $username = "root";
@@ -139,7 +140,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
     }
 }
-
 ?>
 
 <!DOCTYPE html>
@@ -453,7 +453,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <h1>Modify Employee Data</h1>
 
     <div class="data-container">
-        // -- Search and Filter --
+        <!-- Search and Filter -->
         <div class="search-container">
             <form method="GET" class="searchBox" action="PHP_Act_02.php">
                 <select name="column">
@@ -476,7 +476,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             </form>
         </div>
 
-        // -- Table --
+        <!-- Table -->
         <div class="table-container">
             <table>
                 <tr>
@@ -516,7 +516,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         </div>
     </div>
 
-    // -- Separate CRUD Section --
+    <!-- Separate CRUD Section -->
         <div class="crud-container">
             <div class="tabs">
                 <div class="tab active" onclick="showTab('insert')">Insert</div>

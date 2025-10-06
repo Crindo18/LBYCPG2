@@ -445,4 +445,3 @@ $summary_result = $summary_stmt->get_result();
 </div>
 </body>
 </html>
-
