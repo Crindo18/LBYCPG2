@@ -434,7 +434,6 @@ $summary_result = $summary_stmt->get_result();
             </table>
         </div>
     </div>
-    $conn->close();
 
 </div>
 </body>
