@@ -102,29 +102,88 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $message = "<p style='color:red; text-align:center;'>Error: " . $conn->error . "</p>";
             }
         }
+        // Fetch record to edit
+elseif ($action == 'fetch') {
+    $id = $_POST['id'];
+    $sql = "SELECT * FROM empdetails1 WHERE DataEntryID=$id";
+    $result = $conn->query($sql);
+
+    if ($result && $result->num_rows > 0) {
+        $fetchedRecord = $result->fetch_assoc();
+    } else {
+        $message = "<p style='color:red; text-align:center;'>Record not found.</p>";
+    }
+}
+
+
 
         // Edit Functionality
-        elseif ($action == 'edit') {
-            $id      = $_POST['id'];
-            $lname   = $_POST['lname'];
-            $fname   = $_POST['fname'];
-            $sdate   = $_POST['sdate'];
-            $snumber = $_POST['snumber'];
-            $hours   = $_POST['hours'];
-            $dtype   = $_POST['dtype'];
+elseif ($action == 'edit') {
+    $id = $_POST['id'];
 
-            $sql = "UPDATE empdetails1 
-                    SET LastName='$lname', FirstName='$fname', ShiftDate='$sdate', 
-                        ShiftNo='$snumber', Hours='$hours', DutyType='$dtype' 
-                    WHERE DataEntryID=$id";
+    // If only ID is given, fetch record and show edit form
+    if (!isset($_POST['lname'])) {
+        $result = $conn->query("SELECT * FROM empdetails1 WHERE DataEntryID=$id");
+        if ($result->num_rows > 0) {
+            $record = $result->fetch_assoc();
+            ?>
+            <h2 style="text-align:center;">Edit Employee Record</h2>
+            <form method="POST" action="modify.php">
+                <input type="hidden" name="action" value="edit">
+                <input type="hidden" name="id" value="<?php echo $record['DataEntryID']; ?>">
 
-            if ($conn->query($sql) === TRUE) {
-                header("Location: modify.php?msg=edit_success");
-                exit();
-            } else {
-                $message = "<p style='color:red; text-align:center;'>Error updating record: " . $conn->error . "</p>";
-            }
+                <label>Last Name:</label>
+                <input type="text" name="lname" value="<?php echo $record['LastName']; ?>"><br>
+
+                <label>First Name:</label>
+                <input type="text" name="fname" value="<?php echo $record['FirstName']; ?>"><br>
+
+                <label>Shift Date:</label>
+                <input type="date" name="sdate" value="<?php echo $record['ShiftDate']; ?>"><br>
+
+                <label>Shift Number:</label>
+                <input type="text" name="snumber" value="<?php echo $record['ShiftNo']; ?>"><br>
+
+                <label>Hours:</label>
+                <input type="number" name="hours" value="<?php echo $record['Hours']; ?>"><br>
+
+                <label>Duty Type:</label>
+                <select name="dtype" required>
+                    <option value="OnDuty"   <?php if($record['DutyType']=="OnDuty") echo "selected"; ?>>On Duty</option>
+                    <option value="Overtime" <?php if($record['DutyType']=="Overtime") echo "selected"; ?>>Overtime</option>
+                    <option value="Late"     <?php if($record['DutyType']=="Late") echo "selected"; ?>>Late</option>
+                </select><br>
+
+                <input type="submit" value="Update Record">
+            </form>
+            <?php
+        } else {
+            $message = "<p style='color:red; text-align:center;'>No record found with ID $id</p>";
         }
+    } 
+    // If full form submitted, update record
+    else {
+        $lname   = $_POST['lname'];
+        $fname   = $_POST['fname'];
+        $sdate   = $_POST['sdate'];
+        $snumber = $_POST['snumber'];
+        $hours   = $_POST['hours'];
+        $dtype   = $_POST['dtype'];
+
+        $sql = "UPDATE empdetails1 
+                SET LastName='$lname', FirstName='$fname', ShiftDate='$sdate', 
+                    ShiftNo='$snumber', Hours='$hours', DutyType='$dtype' 
+                WHERE DataEntryID=$id";
+
+        if ($conn->query($sql) === TRUE) {
+            header("Location: modify.php?msg=edit_success");
+            exit();
+        } else {
+            $message = "<p style='color:red; text-align:center;'>Error updating record: " . $conn->error . "</p>";
+        }
+    }
+}
+
 
         // Delete Functionality
         elseif ($action == 'delete') {
@@ -544,22 +603,38 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             <!-- Edit -->
             <div class="tab-content" id="edit">
-                <form class="modify-form"method="POST">
-                    <input type="hidden" name="action" value="edit">
-                    <input type="number" name="id" placeholder="DataEntryID to Edit" required>
-                    <input type="text" name="lname" placeholder="Last Name" required>
-                    <input type="text" name="fname" placeholder="First Name" required>
-                    <input type="date" name="sdate" required>
-                    <input type="text" name="snumber" placeholder="Shift No" required>
-                    <input type="number" name="hours" placeholder="Hours" required>
-                    <select name="dtype" required>
-                        <option value="OnDuty">On Duty</option>
-                        <option value="Overtime">Overtime</option>
-                        <option value="Late">Late</option>
-                    </select>
-                    <input type="submit" value="Update">
-                </form>
-            </div>
+    <?php if (isset($fetchedRecord)) { ?>
+        <!-- Show pre-filled edit form -->
+        <form class="modify-form" method="POST">
+            <input type="hidden" name="action" value="edit">
+            <input type="hidden" name="id" value="<?php echo $fetchedRecord['DataEntryID']; ?>">
+
+            <input type="text" name="lname" value="<?php echo $fetchedRecord['LastName']; ?>" required>
+            <input type="text" name="fname" value="<?php echo $fetchedRecord['FirstName']; ?>" required>
+            <input type="date" name="sdate" value="<?php echo $fetchedRecord['ShiftDate']; ?>" required>
+            <input type="text" name="snumber" value="<?php echo $fetchedRecord['ShiftNo']; ?>" required>
+            <input type="number" name="hours" value="<?php echo $fetchedRecord['Hours']; ?>" required>
+
+            <select name="dtype" required>
+                <option value="OnDuty"   <?php if($fetchedRecord['DutyType']=="OnDuty") echo "selected"; ?>>On Duty</option>
+                <option value="Overtime" <?php if($fetchedRecord['DutyType']=="Overtime") echo "selected"; ?>>Overtime</option>
+                <option value="Late"     <?php if($fetchedRecord['DutyType']=="Late") echo "selected"; ?>>Late</option>
+            </select>
+
+            <input type="submit" value="Update Record">
+        </form>
+    <?php } else { ?>
+        <!-- Default fetch form -->
+        <form class="modify-form" method="POST">
+            <input type="hidden" name="action" value="fetch">
+            <input type="number" name="id" placeholder="Enter DataEntryID to Edit" required>
+            <input type="submit" value="Fetch Record">
+        </form>
+    <?php } ?>
+</div>
+
+
+
 
             <!-- Delete -->
             <div class="tab-content" id="delete">
