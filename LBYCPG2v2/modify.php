@@ -1,5 +1,4 @@
 <?php
-// modify.php - full file
 // --- Configuration ---
 $servername = "localhost";
 $username   = "root";
