@@ -16,11 +16,10 @@ $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Employees</h2>
         <button class="btn btn-custom" data-bs-toggle="modal" data-bs-target="#employeeModal" id="addBtn">
-            <i class="bi bi-person-plus"></i> Add Employee
+            <i class="bi bi-person-plus"></i> Add Employee(s)
         </button>
     </div>
 
-    <!-- Filter / Search / Sort -->
     <div class="card-panel mb-3 p-4 shadow-sm">
         <div class="row g-3 align-items-end">
             <div class="col-md-4">
@@ -57,7 +56,6 @@ $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <p class="text-muted mt-4 mb-0 small" id="resultCount"><?= count($employees) ?> employees found.</p>
     </div>
 
-    <!-- Employee Table -->
     <div class="card-panel p-4 shadow-sm">
         <div class="table-responsive">
             <table class="table table-hover align-middle" id="employeeTable">
@@ -91,31 +89,35 @@ $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </div>
 </div>
 
-<!-- Add/Edit Modal -->
 <div class="modal fade" id="employeeModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <form id="employeeForm">
         <div class="modal-header">
-          <h5 class="modal-title">Add Employee</h5>
+          <h5 class="modal-title">Add Employee(s)</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
           <input type="hidden" name="ID" id="employeeID">
-          <div class="mb-3">
-            <label class="form-label">Name</label>
-            <input type="text" name="Name" id="Name" class="form-control" required>
+          <div id="employee-fields">
+            <div class="row employee-row mb-3">
+              <div class="col-md-6">
+                <label class="form-label">Name</label>
+                <input type="text" name="Name[]" class="form-control" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Business Unit</label>
+                <select name="BusinessUnit[]" class="form-select" required>
+                    <option value="">Select...</option>
+                    <option value="Canteen">Canteen</option>
+                    <option value="Service Crew">Service Crew</option>
+                    <option value="Main Office">Main Office</option>
+                    <option value="Satellite Office">Satellite Office</option>
+                </select>
+              </div>
+            </div>
           </div>
-          <div class="mb-3">
-            <label class="form-label">Business Unit</label>
-            <select name="BusinessUnit" id="BusinessUnit" class="form-select" required>
-                <option value="">Select...</option>
-                <option value="Canteen">Canteen</option>
-                <option value="Service Crew">Service Crew</option>
-                <option value="Main Office">Main Office</option>
-                <option value="Satellite Office">Satellite Office</option>
-            </select>
-          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm" id="add-employee-row">Add Another Employee</button>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary rounded-pill" data-bs-dismiss="modal">Cancel</button>
@@ -135,6 +137,14 @@ const tbody = document.querySelector('#employeeTable tbody');
 const resultCount = document.getElementById('resultCount');
 const employeeForm = document.getElementById('employeeForm');
 const selectAll = document.getElementById('selectAll');
+
+// Add another employee row
+document.getElementById('add-employee-row').addEventListener('click', () => {
+  const employeeFields = document.getElementById('employee-fields');
+  const newRow = document.querySelector('.employee-row').cloneNode(true);
+  newRow.querySelectorAll('input, select').forEach(el => el.value = '');
+  employeeFields.appendChild(newRow);
+});
 
 function filterTable() {
     const nameVal = searchName.value.toLowerCase();
@@ -171,7 +181,12 @@ resetBtn.addEventListener('click', () => {
 document.getElementById('addBtn').addEventListener('click', () => {
     employeeForm.reset();
     document.getElementById('employeeID').value = '';
-    document.querySelector('#employeeModal .modal-title').innerText = 'Add Employee';
+    document.querySelector('#employeeModal .modal-title').innerText = 'Add Employee(s)';
+    // Keep only one employee row when opening the modal
+    const employeeFields = document.getElementById('employee-fields');
+    while (employeeFields.children.length > 1) {
+      employeeFields.removeChild(employeeFields.lastChild);
+    }
 });
 
 // Edit Employee
@@ -184,8 +199,14 @@ document.querySelectorAll('.editBtn').forEach(btn => {
                 if (data.success && data.data) {
                     const d = data.data;
                     document.getElementById('employeeID').value = d.ID || '';
-                    document.getElementById('Name').value = d.Name || '';
-                    document.getElementById('BusinessUnit').value = d.BusinessUnit || '';
+                    // Since we are editing, we only need one set of fields
+                    const employeeFields = document.getElementById('employee-fields');
+                    while (employeeFields.children.length > 1) {
+                      employeeFields.removeChild(employeeFields.lastChild);
+                    }
+                    employeeFields.querySelector('input[name="Name[]"]').value = d.Name || '';
+                    employeeFields.querySelector('select[name="BusinessUnit[]"]').value = d.BusinessUnit || '';
+
                     document.querySelector('#employeeModal .modal-title').innerText = 'Edit Employee';
                     new bootstrap.Modal(document.getElementById('employeeModal')).show();
                 } else alert(data.message || 'Record not found');

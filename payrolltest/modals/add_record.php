@@ -3,50 +3,86 @@ require_once '../dbconfig.php';
 header('Content-Type: application/json');
 
 try {
-    // Detect if this is a timetracking entry or employee entry
-    if (!empty($_POST['Date']) && !empty($_POST['ShiftNumber'])) {
-        // TIMETRACKING ENTRY
-        $required = ['Date','ShiftNumber','Name','Role','BusinessUnit','TimeIn','TimeOut','Hours'];
-        foreach ($required as $r) {
-            if (empty($_POST[$r])) throw new Exception("Please fill out all required fields ($r).");
+    $pdo->beginTransaction();
+
+    // Check if we are adding employees or time records
+    if (isset($_POST['Date'])) {
+        // ADDING TIME RECORDS
+        $dates = $_POST['Date'];
+        $names = $_POST['Name'];
+        $units = $_POST['BusinessUnit'];
+        $shifts = $_POST['ShiftNumber'];
+        $roles = $_POST['Role'];
+        $remarks = $_POST['Remarks'];
+        $timeIns = $_POST['TimeIn'];
+        $timeOuts = $_POST['TimeOut'];
+        $hours = $_POST['Hours'];
+
+        // If only one record is submitted, POST values are not arrays. Convert them.
+        if (!is_array($dates)) {
+            $dates = [$dates];
+            $names = [$names];
+            $units = [$units];
+            $shifts = [$shifts];
+            $roles = [$roles];
+            $remarks = [$remarks];
+            $timeIns = [$timeIns];
+            $timeOuts = [$timeOuts];
+            $hours = [$hours];
         }
 
-        $stmt = $pdo->prepare("
-            INSERT INTO payrolldata 
-            (Date, ShiftNumber, Name, Role, BusinessUnit, TimeIn, TimeOut, Hours, Remarks)
-            VALUES (:Date, :ShiftNumber, :Name, :Role, :BusinessUnit, :TimeIn, :TimeOut, :Hours, :Remarks)
-        ");
-        $stmt->execute([
-            ':Date' => $_POST['Date'],
-            ':ShiftNumber' => $_POST['ShiftNumber'],
-            ':Name' => $_POST['Name'],
-            ':Role' => $_POST['Role'],
-            ':BusinessUnit' => $_POST['BusinessUnit'],
-            ':TimeIn' => $_POST['TimeIn'],
-            ':TimeOut' => $_POST['TimeOut'],
-            ':Hours' => $_POST['Hours'],
-            ':Remarks' => $_POST['Remarks'] ?? ''
-        ]);
+        $stmt = $pdo->prepare(
+            "INSERT INTO payrolldata (Date, ShiftNumber, Name, BusinessUnit, Role, Remarks, TimeIn, TimeOut, Hours)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        );
 
-        echo json_encode(['success'=>true,'message'=>'Time record added successfully.']);
+        for ($i = 0; $i < count($dates); $i++) {
+            if (empty($names[$i]) || empty($dates[$i])) {
+                throw new Exception("Name and Date are required for all records.");
+            }
+            $stmt->execute([
+                $dates[$i],
+                $shifts[$i] ?: null,
+                $names[$i],
+                $units[$i] ?: null,
+                $roles[$i] ?: null,
+                $remarks[$i] ?: null,
+                $timeIns[$i] ?: null,
+                $timeOuts[$i] ?: null,
+                $hours[$i] ?: null,
+            ]);
+        }
+        $message = count($dates) . " time record(s) added successfully.";
+
     } else {
-        // EMPLOYEE ENTRY
-        $required = ['Name','BusinessUnit'];
-        foreach ($required as $r) {
-            if (empty($_POST[$r])) throw new Exception("Please fill out all required fields ($r).");
+        // ADDING EMPLOYEES
+        $names = $_POST['Name'];
+        $units = $_POST['BusinessUnit'];
+
+        if (!is_array($names)) {
+            $names = [$names];
+            $units = [$units];
         }
-
-        $stmt = $pdo->prepare("
-            INSERT INTO payrolldata (Name, BusinessUnit)
-            VALUES (:Name, :BusinessUnit)
-        ");
-        $stmt->execute([
-            ':Name' => $_POST['Name'],
-            ':BusinessUnit' => $_POST['BusinessUnit']
-        ]);
-
-        echo json_encode(['success'=>true,'message'=>'Employee added successfully.']);
+        
+        $stmt = $pdo->prepare(
+            "INSERT INTO payrolldata (Name, BusinessUnit) VALUES (?, ?)"
+        );
+        
+        for ($i = 0; $i < count($names); $i++) {
+            if (empty($names[$i]) || empty($units[$i])) {
+                throw new Exception("Name and Business Unit are required for all employees.");
+            }
+            $stmt->execute([$names[$i], $units[$i]]);
+        }
+        $message = count($names) . " employee(s) added successfully.";
     }
+
+    $pdo->commit();
+    echo json_encode(['success' => true, 'message' => $message]);
+
 } catch (Exception $e) {
-    echo json_encode(['success'=>false,'message'=>$e->getMessage()]);
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }

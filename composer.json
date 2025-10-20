@@ -1,0 +1,9 @@
+{
+    "name": "phpoffice/phpspreadsheet",
+    "autoload": {
+        "psr-4": {
+            "Phpoffice\\Phpspreadsheet\\": "src/"
+        }
+    },
+    "require": {}
+}
