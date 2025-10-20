@@ -16,24 +16,45 @@
 
         <ul class="nav flex-column mt-3">
             <li class="nav-item">
-                <a href="dashboard.php" class="nav-link"><i class="bi bi-speedometer2"></i> Dashboard</a>
+                <a href="dashboard.php" class="nav-link">
+                    <i class="bi bi-speedometer2"></i> Dashboard
+                </a>
             </li>
+            
             <li class="nav-item">
-                <a href="payroll.php" class="nav-link"><i class="bi bi-cash-coin"></i> Payroll</a>
-            </li>
-
-            <li class="nav-item">
-                <a href="employees.php" class="nav-link"><i class="bi bi-people-fill"></i> Employees</a>
-            </li>
-
-            <li class="nav-item">
-                <a href="timetracking.php" class="nav-link"><i class="bi bi-clock-history"></i> Time Tracking</a>
+                <a href="employees.php" class="nav-link">
+                    <i class="bi bi-people-fill"></i> Employees
+                </a>
             </li>
 
             <li class="nav-item">
-                <a href="reports.php" class="nav-link"><i class="bi bi-graph-up"></i> Reports</a>
+                <a href="timetracking.php" class="nav-link">
+                    <i class="bi bi-clock-history"></i> Time Tracking
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a href="batch_upload.php" class="nav-link">
+                    <i class="bi bi-file-earmark-excel"></i> Batch Upload
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a href="salary_summary.php" class="nav-link">
+                    <i class="bi bi-cash-stack"></i> Salary Summary
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a href="reports.php" class="nav-link">
+                    <i class="bi bi-graph-up"></i> Reports
+                </a>
             </li>
         </ul>
+
+        <div class="mt-auto p-3 text-center border-top">
+            <small class="text-muted">Payroll System v2.0</small>
+        </div>
     </nav>
 </div>
 

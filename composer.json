@@ -5,5 +5,7 @@
             "Phpoffice\\Phpspreadsheet\\": "src/"
         }
     },
-    "require": {}
+    "require": {
+        "dompdf/dompdf": "^3.1"
+    }
 }
