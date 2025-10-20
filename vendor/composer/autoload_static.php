@@ -15,6 +15,7 @@ class ComposerStaticInit6ce16c12f2a3df9c0d0fce6bd7e2821b
         'P' => 
         array (
             'Phpoffice\\Phpspreadsheet\\' => 25,
+            'PHPMailer\\PHPMailer\\' => 20,
         ),
         'M' => 
         array (
@@ -42,6 +43,10 @@ class ComposerStaticInit6ce16c12f2a3df9c0d0fce6bd7e2821b
         'Phpoffice\\Phpspreadsheet\\' => 
         array (
             0 => __DIR__ . '/../..' . '/src',
+        ),
+        'PHPMailer\\PHPMailer\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/phpmailer/phpmailer/src',
         ),
         'Masterminds\\' => 
         array (

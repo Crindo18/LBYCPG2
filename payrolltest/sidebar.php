@@ -46,6 +46,18 @@
             </li>
 
             <li class="nav-item">
+                <a href="employee_payslip_portal.php" class="nav-link">
+                    <i class="bi bi-person-badge"></i> Employee Payslips
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a href="batch_email.php" class="nav-link">
+                    <i class="bi bi-envelope"></i> Batch Email
+                </a>
+            </li>
+
+            <li class="nav-item">
                 <a href="reports.php" class="nav-link">
                     <i class="bi bi-graph-up"></i> Reports
                 </a>
