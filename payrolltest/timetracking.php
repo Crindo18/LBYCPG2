@@ -2,12 +2,11 @@
 require_once 'dbconfig.php';
 include 'sidebar.php';
 
-// Get all time tracking records, ensuring we only get rows with actual dates.
-// This prevents employees without time records from showing up
+// Get all time tracking records
 $stmt = $pdo->query("SELECT * FROM payrolldata WHERE Date IS NOT NULL AND Date > '0000-00-00' ORDER BY ID DESC");
 $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Get a list of all unique employees with their business units for the dropdown.
+// Get unique employees with their business units
 $empStmt = $pdo->query("
     SELECT DISTINCT Name, BusinessUnit
     FROM payrolldata 
@@ -53,36 +52,63 @@ $employees = $empStmt->fetchAll(PDO::FETCH_ASSOC);
   </div>
 
   <div class="card-panel p-3">
-    <table class="table table-hover align-middle">
-      <thead class="table-light">
-        <tr>
-          <th>Date</th><th>Shift #</th><th>Name</th><th>Business Unit</th><th>Role</th><th>Time In</th><th>Time Out</th><th>Hours</th><th>Remarks</th><th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="recordsTbody">
-        <?php if ($records): ?>
-          <?php foreach ($records as $row): ?>
-            <tr data-id="<?= (int)$row['ID'] ?>">
-              <td><?= htmlspecialchars($row['Date']) ?></td>
-              <td><?= htmlspecialchars($row['ShiftNumber']) ?></td>
-              <td><?= htmlspecialchars($row['Name']) ?></td>
-              <td><?= htmlspecialchars($row['BusinessUnit']) ?></td>
-              <td><?= htmlspecialchars($row['Role']) ?></td>
-              <td><?= htmlspecialchars($row['TimeIn']) ?></td>
-              <td><?= htmlspecialchars($row['TimeOut']) ?></td>
-              <td><?= htmlspecialchars($row['Hours']) ?></td>
-              <td><?= htmlspecialchars($row['Remarks']) ?></td>
-              <td>
-                <button class="btn btn-sm btn-outline-primary editBtn" data-id="<?= (int)$row['ID'] ?>"><i class="bi bi-pencil-square"></i></button>
-                <button class="btn btn-sm btn-outline-danger deleteBtn" data-id="<?= (int)$row['ID'] ?>"><i class="bi bi-trash"></i></button>
-              </td>
-            </tr>
-          <?php endforeach; ?>
-        <?php else: ?>
-          <tr><td colspan="10" class="text-center text-muted">No time records found.</td></tr>
-        <?php endif; ?>
-      </tbody>
-    </table>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <button id="deleteSelected" class="btn btn-danger" style="display: none;">
+        <i class="bi bi-trash"></i> Delete Selected (<span id="selectedCount">0</span>)
+      </button>
+      <small class="text-muted ms-auto">Total: <?= count($records) ?> records</small>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead class="table-light">
+          <tr>
+            <th><input type="checkbox" id="selectAll" title="Select All"></th>
+            <th>Date</th>
+            <th>Shift #</th>
+            <th>Name</th>
+            <th>Business Unit</th>
+            <th>Role</th>
+            <th>Time In</th>
+            <th>Time Out</th>
+            <th>Hours</th>
+            <th>Remarks</th>
+            <th>Deductions</th>
+            <th>Extra</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="recordsTbody">
+          <?php if ($records): ?>
+            <?php foreach ($records as $row): ?>
+              <tr data-id="<?= (int)$row['ID'] ?>">
+                <td><input type="checkbox" class="rowCheck" value="<?= (int)$row['ID'] ?>"></td>
+                <td><?= htmlspecialchars($row['Date']) ?></td>
+                <td><?= htmlspecialchars($row['ShiftNumber']) ?></td>
+                <td><?= htmlspecialchars($row['Name']) ?></td>
+                <td><?= htmlspecialchars($row['BusinessUnit']) ?></td>
+                <td><?= htmlspecialchars($row['Role']) ?></td>
+                <td><?= htmlspecialchars($row['TimeIn']) ?></td>
+                <td><?= htmlspecialchars($row['TimeOut']) ?></td>
+                <td><?= htmlspecialchars($row['Hours']) ?></td>
+                <td><?= htmlspecialchars($row['Remarks']) ?></td>
+                <td class="text-danger">₱<?= number_format(abs(floatval($row['Deductions'] ?? 0)), 2) ?></td>
+                <td class="text-success">₱<?= number_format(floatval($row['Extra'] ?? 0), 2) ?></td>
+                <td>
+                  <button class="btn btn-sm btn-outline-primary editBtn" data-id="<?= (int)$row['ID'] ?>">
+                    <i class="bi bi-pencil-square"></i>
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger deleteBtn" data-id="<?= (int)$row['ID'] ?>">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          <?php else: ?>
+            <tr><td colspan="13" class="text-center text-muted">No time records found.</td></tr>
+          <?php endif; ?>
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -139,22 +165,34 @@ $employees = $empStmt->fetchAll(PDO::FETCH_ASSOC);
                     <option>Late</option>
                   </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                   <label class="form-label">Time In</label>
                   <input type="time" name="TimeIn[]" class="form-control">
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                   <label class="form-label">Time Out</label>
                   <input type="time" name="TimeOut[]" class="form-control">
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                   <label class="form-label">Hours</label>
                   <input type="number" step="0.01" name="Hours[]" class="form-control">
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label">Deductions (₱)</label>
+                  <input type="number" step="0.01" name="Deductions[]" class="form-control" placeholder="0.00">
+                  <small class="text-muted">Enter positive amount</small>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label">Extra/Bonus (₱)</label>
+                  <input type="number" step="0.01" name="Extra[]" class="form-control" placeholder="0.00">
+                  <small class="text-muted">SIL, Bonus, etc.</small>
                 </div>
               </div>
             </div>
           </div>
-          <button type="button" class="btn btn-outline-primary btn-sm" id="add-record-row">Add Another Record</button>
+          <button type="button" class="btn btn-outline-primary btn-sm" id="add-record-row">
+            <i class="bi bi-plus-circle"></i> Add Another Record
+          </button>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -181,7 +219,6 @@ $employees = $empStmt->fetchAll(PDO::FETCH_ASSOC);
 </div>
 
 <script>
-/* Helpers */
 const tbody = document.getElementById('recordsTbody');
 const recordModalEl = document.getElementById('recordModal');
 const recordModal = new bootstrap.Modal(recordModalEl);
@@ -223,9 +260,7 @@ resetBtn.addEventListener('click', () => {
 });
 filterTable();
 
-/* Modal: Add/Edit/Delete Logic */
-
-// Add another record row
+/* Modal: Add another record row */
 document.getElementById('add-record-row').addEventListener('click', () => {
   const container = document.getElementById('record-fields');
   const template = container.querySelector('.record-row');
@@ -234,7 +269,7 @@ document.getElementById('add-record-row').addEventListener('click', () => {
   // Clear all input values
   newRow.querySelectorAll('input, select').forEach(el => el.value = '');
   
-  // Attach change event listener to the name select in the new row
+  // Attach change event listener to the name select
   const nameSelect = newRow.querySelector('.name-select');
   const businessUnitField = newRow.querySelector('.business-unit-field');
   nameSelect.addEventListener('change', function() {
@@ -243,7 +278,7 @@ document.getElementById('add-record-row').addEventListener('click', () => {
     businessUnitField.value = unit;
   });
   
-  // Add a remove button to the new row
+  // Add remove button
   const removeButtonCol = document.createElement('div');
   removeButtonCol.className = 'col-12 text-end mt-2';
   const removeBtn = document.createElement('button');
@@ -257,7 +292,7 @@ document.getElementById('add-record-row').addEventListener('click', () => {
   container.appendChild(newRow);
 });
 
-// Reset modal for adding records
+/* Reset modal for adding records */
 document.getElementById('addBtn').addEventListener('click', () => {
   const form = document.getElementById('recordForm');
   form.reset();
@@ -266,25 +301,21 @@ document.getElementById('addBtn').addEventListener('click', () => {
   document.getElementById('add-record-row').style.display = 'block';
 
   const container = document.getElementById('record-fields');
-  // Remove all but the first record row
   while (container.children.length > 1) {
     container.removeChild(container.lastChild);
   }
-  // Remove any "Remove" buttons from the first row if they exist
   const firstRow = container.querySelector('.record-row');
   const removeBtn = firstRow.querySelector('.btn-danger');
   if (removeBtn) removeBtn.parentElement.remove();
 });
 
-// Function to attach event listeners to edit and delete buttons
+/* Event listeners for edit and delete */
 function attachEventListeners() {
-  // Edit buttons
   document.querySelectorAll('.editBtn').forEach(btn => {
     btn.removeEventListener('click', handleEdit);
     btn.addEventListener('click', handleEdit);
   });
   
-  // Delete buttons
   document.querySelectorAll('.deleteBtn').forEach(btn => {
     btn.removeEventListener('click', handleDelete);
     btn.addEventListener('click', handleDelete);
@@ -303,13 +334,11 @@ function handleEdit(e) {
       document.getElementById('recordID').value = data.ID;
       
       const container = document.getElementById('record-fields');
-      // Remove all but the first record row
       while (container.children.length > 1) {
         container.removeChild(container.lastChild);
       }
       
       const row = container.querySelector('.record-row');
-      // Remove any "Remove" buttons from the first row
       const removeBtn = row.querySelector('.btn-danger');
       if (removeBtn) removeBtn.parentElement.remove();
       
@@ -322,6 +351,11 @@ function handleEdit(e) {
       row.querySelector('[name="TimeIn[]"]').value = data.TimeIn ?? '';
       row.querySelector('[name="TimeOut[]"]').value = data.TimeOut ?? '';
       row.querySelector('[name="Hours[]"]').value = data.Hours ?? '';
+      
+      // Show deductions as positive for editing
+      const deductionValue = Math.abs(parseFloat(data.Deductions ?? 0));
+      row.querySelector('[name="Deductions[]"]').value = deductionValue > 0 ? deductionValue : '';
+      row.querySelector('[name="Extra[]"]').value = data.Extra ?? '';
 
       document.querySelector('#recordModal .modal-title').textContent = 'Edit Time Record';
       document.getElementById('add-record-row').style.display = 'none';
@@ -334,10 +368,9 @@ function handleDelete(e) {
   deleteModal.show();
 }
 
-// Initial attachment of event listeners
 attachEventListeners();
 
-// Attach change event listeners to all name selects for auto-populating business unit
+/* Auto-populate business unit when selecting employee */
 document.querySelectorAll('.name-select').forEach(select => {
   select.addEventListener('change', function() {
     const selectedOption = this.options[this.selectedIndex];
@@ -350,7 +383,7 @@ document.querySelectorAll('.name-select').forEach(select => {
   });
 });
 
-// Handle Delete Confirmation
+/* Handle Delete Confirmation */
 document.getElementById('confirmDelete').addEventListener('click', () => {
   fetch('modals/delete_record.php', { 
     method: 'POST', 
@@ -364,7 +397,7 @@ document.getElementById('confirmDelete').addEventListener('click', () => {
   .catch(() => alert('Server error'));
 });
 
-// Handle Form Submit (Add/Edit)
+/* Handle Form Submit (Add/Edit) */
 document.getElementById('recordForm').addEventListener('submit', e => {
   e.preventDefault();
   const form = e.target;

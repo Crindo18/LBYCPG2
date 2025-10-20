@@ -7,7 +7,6 @@ $uploadType = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
     require __DIR__ . '/vendor/autoload.php';
-  
     
     $file = $_FILES['excel_file']['tmp_name'];
     
@@ -79,6 +78,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                 $timeOut = date('H:i:s', strtotime($timeOut));
             }
             
+            // Handle deductions - convert positive to negative for storage
+            $deductionValue = isset($colMap['Deductions']) ? floatval($row[$colMap['Deductions']]) : 0;
+            if ($deductionValue > 0) {
+                $deductionValue = -$deductionValue;
+            }
+            
             $stmt->execute([
                 $date,
                 isset($colMap['ShiftNumber']) ? $row[$colMap['ShiftNumber']] : null,
@@ -89,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                 isset($colMap['Hours']) ? floatval($row[$colMap['Hours']]) : null,
                 isset($colMap['Role']) ? $row[$colMap['Role']] : null,
                 isset($colMap['Remarks']) ? $row[$colMap['Remarks']] : null,
-                isset($colMap['Deductions']) ? floatval($row[$colMap['Deductions']]) : 0,
+                $deductionValue,
                 isset($colMap['Extra']) ? floatval($row[$colMap['Extra']]) : 0
             ]);
             $imported++;
@@ -105,27 +110,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
         $uploadType = 'danger';
     }
 }
-
-// Get stats
-$stats = $pdo->query("
-    SELECT 
-        COUNT(DISTINCT Name) as total_employees,
-        COUNT(*) as total_records,
-        MIN(Date) as earliest_date,
-        MAX(Date) as latest_date
-    FROM payrolldata
-    WHERE Date IS NOT NULL
-")->fetch();
 ?>
 
 <div class="main-content">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2><i class="bi bi-file-earmark-excel"></i> Batch Upload</h2>
+        <a href="dashboard.php" class="btn btn-outline-secondary">
+            <i class="bi bi-speedometer2"></i> View Statistics
+        </a>
     </div>
 
     <?php if ($uploadMessage): ?>
     <div class="alert alert-<?= $uploadType ?> alert-dismissible fade show" role="alert">
-        <?= htmlspecialchars($uploadMessage) ?>
+        <strong><?= $uploadType === 'success' ? 'Success!' : 'Error!' ?></strong> <?= htmlspecialchars($uploadMessage) ?>
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>
     <?php endif; ?>
@@ -133,7 +130,7 @@ $stats = $pdo->query("
     <div class="row g-4">
         <!-- Upload Form -->
         <div class="col-md-8">
-            <div class="card-panel p-4">
+            <div class="card-panel p-4 shadow-sm">
                 <h4 class="mb-3"><i class="bi bi-upload"></i> Upload TimeSheet Excel File</h4>
                 <p class="text-muted">Upload an Excel file (.xlsx or .xls) containing employee time records.</p>
                 
@@ -147,9 +144,9 @@ $stats = $pdo->query("
                     <div class="alert alert-info">
                         <strong><i class="bi bi-info-circle"></i> Expected Columns:</strong>
                         <ul class="mb-0 mt-2">
-                            <li>Date, Shift No., Business Unit, Name</li>
-                            <li>Time IN, Time OUT, Hours, Role</li>
-                            <li>Remarks, Deductions, Short/Misload/Bonus/SIL</li>
+                            <li><strong>Required:</strong> Date, Name, Business Unit</li>
+                            <li><strong>Optional:</strong> Shift No., Time IN, Time OUT, Hours</li>
+                            <li><strong>Optional:</strong> Role, Remarks, Deductions, Extra/Bonus/SIL</li>
                         </ul>
                     </div>
                     
@@ -160,40 +157,40 @@ $stats = $pdo->query("
             </div>
         </div>
 
-        <!-- Stats -->
+        <!-- Instructions & Quick Links -->
         <div class="col-md-4">
-            <div class="card-panel p-4 text-center">
-                <h5 class="text-muted mb-4"><i class="bi bi-graph-up"></i> Database Statistics</h5>
+            <div class="card-panel p-4 shadow-sm">
+                <h5 class="mb-3"><i class="bi bi-question-circle"></i> Upload Instructions</h5>
+                <ol class="ps-3">
+                    <li class="mb-2">Prepare your Excel file with a "TimeSheet" tab</li>
+                    <li class="mb-2">Ensure Date and Name columns are filled</li>
+                    <li class="mb-2">Deductions should be entered as positive numbers</li>
+                    <li class="mb-2">Click "Upload & Import" to process</li>
+                </ol>
                 
-                <div class="mb-4">
-                    <h2 class="text-primary fw-bold"><?= number_format($stats['total_employees'] ?? 0) ?></h2>
-                    <small class="text-muted">Total Employees</small>
+                <div class="alert alert-warning mt-3">
+                    <small><strong>Note:</strong> Deductions will be automatically converted to negative values for proper calculation.</small>
                 </div>
-                
-                <div class="mb-4">
-                    <h2 class="text-success fw-bold"><?= number_format($stats['total_records'] ?? 0) ?></h2>
-                    <small class="text-muted">Total Time Records</small>
-                </div>
-                
-                <?php if ($stats['earliest_date']): ?>
-                <div class="mt-4 pt-3 border-top">
-                    <p class="mb-1 fw-semibold">Date Range:</p>
-                    <small class="text-muted">
-                        <?= date('M d, Y', strtotime($stats['earliest_date'])) ?><br>
-                        <i class="bi bi-arrow-down"></i><br>
-                        <?= date('M d, Y', strtotime($stats['latest_date'])) ?>
-                    </small>
-                </div>
-                <?php endif; ?>
             </div>
             
-            <div class="card-panel p-3 mt-3 text-center">
+            <div class="card-panel p-3 mt-3 text-center shadow-sm">
+                <h6 class="mb-3">Quick Actions</h6>
                 <a href="salary_summary.php" class="btn btn-outline-primary w-100 mb-2">
                     <i class="bi bi-calculator"></i> View Salary Summary
                 </a>
-                <a href="timetracking.php" class="btn btn-outline-secondary w-100">
+                <a href="timetracking.php" class="btn btn-outline-secondary w-100 mb-2">
                     <i class="bi bi-clock-history"></i> View Time Records
                 </a>
+                <a href="reports.php" class="btn btn-outline-info w-100">
+                    <i class="bi bi-graph-up"></i> View Reports
+                </a>
+            </div>
+            
+            <div class="card-panel p-3 mt-3 bg-light shadow-sm">
+                <h6 class="mb-2"><i class="bi bi-lightbulb"></i> Pro Tip</h6>
+                <small class="text-muted">
+                    After uploading, visit the Dashboard to see updated statistics and the Salary Summary to verify calculations.
+                </small>
             </div>
         </div>
     </div>

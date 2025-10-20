@@ -17,6 +17,8 @@ try {
         $timeIns = $_POST['TimeIn'];
         $timeOuts = $_POST['TimeOut'];
         $hours = $_POST['Hours'];
+        $deductions = $_POST['Deductions'] ?? [];
+        $extras = $_POST['Extra'] ?? [];
 
         // If only one record is submitted, POST values are not arrays. Convert them.
         if (!is_array($dates)) {
@@ -29,17 +31,26 @@ try {
             $timeIns = [$timeIns];
             $timeOuts = [$timeOuts];
             $hours = [$hours];
+            $deductions = [$deductions];
+            $extras = [$extras];
         }
 
         $stmt = $pdo->prepare(
-            "INSERT INTO payrolldata (Date, ShiftNumber, Name, BusinessUnit, Role, Remarks, TimeIn, TimeOut, Hours)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO payrolldata (Date, ShiftNumber, Name, BusinessUnit, Role, Remarks, TimeIn, TimeOut, Hours, Deductions, Extra)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
 
         for ($i = 0; $i < count($dates); $i++) {
             if (empty($names[$i]) || empty($dates[$i])) {
                 throw new Exception("Name and Date are required for all records.");
             }
+            
+            // Convert deductions to negative if positive (for storage)
+            $deductionValue = isset($deductions[$i]) ? floatval($deductions[$i]) : 0;
+            if ($deductionValue > 0) {
+                $deductionValue = -$deductionValue;
+            }
+            
             $stmt->execute([
                 $dates[$i],
                 $shifts[$i] ?: null,
@@ -50,6 +61,8 @@ try {
                 $timeIns[$i] ?: null,
                 $timeOuts[$i] ?: null,
                 $hours[$i] ?: null,
+                $deductionValue,
+                isset($extras[$i]) ? floatval($extras[$i]) : 0
             ]);
         }
         $message = count($dates) . " time record(s) added successfully.";
