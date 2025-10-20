@@ -8,7 +8,7 @@ try {
     $stmt = $pdo->prepare("DELETE FROM payrolldata WHERE ID = :ID");
     $stmt->execute([':ID' => $_POST['ID']]);
 
-    echo json_encode(['success' => true, 'message' => 'Employee deleted successfully.']);
+    echo json_encode(['success' => true, 'message' => 'Record deleted successfully.']);
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }
