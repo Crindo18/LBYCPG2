@@ -167,10 +167,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                     <li class="mb-2">Deductions should be entered as positive numbers</li>
                     <li class="mb-2">Click "Upload & Import" to process</li>
                 </ol>
-                
-                <div class="alert alert-warning mt-3">
-                    <small><strong>Note:</strong> Deductions will be automatically converted to negative values for proper calculation.</small>
-                </div>
             </div>
             
             <div class="card-panel p-3 mt-3 text-center shadow-sm">
@@ -184,13 +180,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                 <a href="reports.php" class="btn btn-outline-info w-100">
                     <i class="bi bi-graph-up"></i> View Reports
                 </a>
-            </div>
-            
-            <div class="card-panel p-3 mt-3 bg-light shadow-sm">
-                <h6 class="mb-2"><i class="bi bi-lightbulb"></i> Pro Tip</h6>
-                <small class="text-muted">
-                    After uploading, visit the Dashboard to see updated statistics and the Salary Summary to verify calculations.
-                </small>
             </div>
         </div>
     </div>

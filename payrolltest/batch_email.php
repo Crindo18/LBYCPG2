@@ -273,15 +273,6 @@ $payrollData = calculateRates($pdo, $startDate, $endDate);
         </form>
     </div>
 
-    <div class="alert alert-info">
-        <i class="bi bi-info-circle"></i> <strong>Note:</strong> Before sending emails, configure your SMTP settings in the code:
-        <ul class="mb-0 mt-2">
-            <li>Update <code>$mail->Username</code> with your email</li>
-            <li>Update <code>$mail->Password</code> with your app password</li>
-            <li>For Gmail, enable "App Passwords" in your Google Account settings</li>
-        </ul>
-    </div>
-
     <div class="card-panel p-4">
         <h5 class="mb-3">Select Employees to Send Payslips</h5>
         
@@ -375,10 +366,6 @@ $payrollData = calculateRates($pdo, $startDate, $endDate);
             <li>Click "Send Payslips via Email" to batch send</li>
             <li>Each employee will receive a PDF payslip attached to their email</li>
         </ol>
-        <div class="alert alert-warning mt-3 mb-0">
-            <strong>Important:</strong> Make sure to configure SMTP settings in the code before sending emails.
-            For Gmail users, you need to create an "App Password" from your Google Account security settings.
-        </div>
     </div>
 </div>
 
