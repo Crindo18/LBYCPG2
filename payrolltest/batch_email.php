@@ -16,16 +16,22 @@ $messageType = '';
 $startDate = $_GET['start_date'] ?? date('Y-m-01');
 $endDate = $_GET['end_date'] ?? date('Y-m-t');
 
-// Get employee emails
-$emailQuery = $pdo->query("
-    SELECT DISTINCT p.Name, e.Email 
-    FROM payrolldata p
-    LEFT JOIN employee_info e ON p.Name = e.Name
-    WHERE p.Date IS NOT NULL
-    AND e.Email IS NOT NULL
-    ORDER BY p.Name
-");
-$employeesWithEmails = $emailQuery->fetchAll(PDO::FETCH_ASSOC);
+// Handle email update
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_email'])) {
+    $name = $_POST['employee_name'];
+    $email = trim($_POST['email']);
+    
+    try {
+        $stmt = $pdo->prepare("UPDATE payrolldata SET Email = ? WHERE Name = ?");
+        $stmt->execute([$email, $name]);
+        
+        $message = "Email updated successfully for $name";
+        $messageType = 'success';
+    } catch (PDOException $e) {
+        $message = "Error updating email: " . $e->getMessage();
+        $messageType = 'danger';
+    }
+}
 
 // Handle batch sending
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_batch'])) {
@@ -37,79 +43,77 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_batch'])) {
         $message = "Please select at least one employee.";
         $messageType = 'warning';
     } else {
-        $payrollData = calculateRates($pdo, $startDate, $endDate);
-        $successCount = 0;
-        $failCount = 0;
-        $errors = [];
-        
+        // Check if all selected employees have valid emails
+        $invalidEmails = [];
         foreach ($selectedEmployees as $empName) {
-            // Find employee data
-            $empData = null;
-            foreach ($payrollData['employees'] as $emp) {
-                if ($emp['name'] === $empName) {
-                    $empData = $emp;
-                    break;
-                }
-            }
+            $emailStmt = $pdo->prepare("SELECT Email FROM payrolldata WHERE Name = ? LIMIT 1");
+            $emailStmt->execute([$empName]);
+            $emailRow = $emailStmt->fetch(PDO::FETCH_ASSOC);
             
-            if (!$empData) continue;
-            
-            // Get email
-            $email = null;
-            foreach ($employeesWithEmails as $e) {
-                if ($e['Name'] === $empName) {
-                    $email = $e['Email'];
-                    break;
-                }
-            }
-            
-            if (!$email) {
-                $errors[] = "$empName - No email address";
-                $failCount++;
-                continue;
-            }
-            
-            // Generate PDF
-            try {
-                $pdf = generatePayslipPDF($empData, $startDate, $endDate);
-                
-                // Send email
-                if (sendPayslipEmail($email, $empName, $pdf, $startDate, $endDate)) {
-                    $successCount++;
-                } else {
-                    $failCount++;
-                    $errors[] = "$empName - Email sending failed";
-                }
-            } catch (Exception $e) {
-                $failCount++;
-                $errors[] = "$empName - " . $e->getMessage();
+            if (!$emailRow || empty($emailRow['Email']) || !filter_var($emailRow['Email'], FILTER_VALIDATE_EMAIL)) {
+                $invalidEmails[] = $empName;
             }
         }
         
-        $message = "Batch sending complete! Success: $successCount, Failed: $failCount";
-        $messageType = $failCount > 0 ? 'warning' : 'success';
-        
-        if (!empty($errors)) {
-            $message .= "<br><small>" . implode("<br>", $errors) . "</small>";
+        if (!empty($invalidEmails)) {
+            $message = "Cannot send emails. The following employees have invalid or missing email addresses:<br><strong>" . implode(', ', $invalidEmails) . "</strong><br>Please update their email addresses before sending.";
+            $messageType = 'danger';
+        } else {
+            $payrollData = calculateRates($pdo, $startDate, $endDate);
+            $successCount = 0;
+            $failCount = 0;
+            $errors = [];
+            
+            foreach ($selectedEmployees as $empName) {
+                // Find employee data
+                $empData = null;
+                foreach ($payrollData['employees'] as $emp) {
+                    if ($emp['name'] === $empName) {
+                        $empData = $emp;
+                        break;
+                    }
+                }
+                
+                if (!$empData) continue;
+                
+                // Get email
+                $emailStmt = $pdo->prepare("SELECT Email FROM payrolldata WHERE Name = ? LIMIT 1");
+                $emailStmt->execute([$empName]);
+                $emailRow = $emailStmt->fetch(PDO::FETCH_ASSOC);
+                $email = $emailRow['Email'] ?? '';
+                
+                // Generate PDF
+                try {
+                    $pdf = generatePayslipPDF($empData, $startDate, $endDate);
+                    
+                    // Send email
+                    if (sendPayslipEmail($email, $empName, $pdf, $startDate, $endDate)) {
+                        $successCount++;
+                    } else {
+                        $failCount++;
+                        $errors[] = "$empName - Email sending failed";
+                    }
+                } catch (Exception $e) {
+                    $failCount++;
+                    $errors[] = "$empName - " . $e->getMessage();
+                }
+            }
+            
+            $message = "Batch sending complete! Success: $successCount, Failed: $failCount";
+            $messageType = $failCount > 0 ? 'warning' : 'success';
+            
+            if (!empty($errors)) {
+                $message .= "<br><small>" . implode("<br>", $errors) . "</small>";
+            }
         }
     }
 }
 
-/**
- * Formats a number as currency for a specific output mode.
- * @param float $number The number to format.
- * @param string $mode 'web' for browser display, 'pdf' for Dompdf.
- * @return string The formatted currency string.
- */
 function formatCurrency($number, $mode = 'web') {
-    // Use the HTML entity for PDF, and the literal symbol for the web.
     $symbol = ($mode === 'pdf') ? '&#8369; ' : '₱';
     return $symbol . number_format($number, 2);
 }
 
-/**
- * Generate PDF payslip
- */
 function generatePayslipPDF($empData, $startDate, $endDate) {
     $totals = $empData['totals'];
     $name = $empData['name'];
@@ -189,27 +193,21 @@ function generatePayslipPDF($empData, $startDate, $endDate) {
     return $dompdf->output();
 }
 
-/**
- * Send payslip via email
- */
 function sendPayslipEmail($toEmail, $empName, $pdfContent, $startDate, $endDate) {
     $mail = new PHPMailer(true);
     
     try {
-        // Server settings
         $mail->isSMTP();
         $mail->Host = 'smtp.gmail.com';
         $mail->SMTPAuth = true;
-        $mail->Username = 'christian_alado@dlsu.edu.ph';  // Change to your email
-        $mail->Password = 'npmcrtycmjrdirmn';     // Change to your app password
+        $mail->Username = 'christian_alado@dlsu.edu.ph';
+        $mail->Password = 'npmcrtycmjrdirmn';
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port = 587;
         
-        // Recipients
         $mail->setFrom('noreply@luambata.com', 'LU Ambata Services');
         $mail->addAddress($toEmail, $empName);
         
-        // Content
         $mail->isHTML(true);
         $mail->Subject = 'Your Payslip for ' . date('F Y', strtotime($startDate));
         $mail->Body = '
@@ -226,7 +224,6 @@ function sendPayslipEmail($toEmail, $empName, $pdfContent, $startDate, $endDate)
             </html>
         ';
         
-        // Attach PDF
         $filename = 'Payslip_' . str_replace(' ', '_', $empName) . '_' . date('Y-m', strtotime($startDate)) . '.pdf';
         $mail->addStringAttachment($pdfContent, $filename);
         
@@ -240,6 +237,15 @@ function sendPayslipEmail($toEmail, $empName, $pdfContent, $startDate, $endDate)
 
 // Calculate payroll for preview
 $payrollData = calculateRates($pdo, $startDate, $endDate);
+
+// Get employees with their emails from payrolldata
+$employeeEmailsQuery = $pdo->query("
+    SELECT DISTINCT Name, BusinessUnit, Email
+    FROM payrolldata
+    WHERE Name IS NOT NULL
+    ORDER BY Name ASC
+");
+$allEmployees = $employeeEmailsQuery->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <div class="main-content">
@@ -276,10 +282,27 @@ $payrollData = calculateRates($pdo, $startDate, $endDate);
     <div class="card-panel p-4">
         <h5 class="mb-3">Select Employees to Send Payslips</h5>
         
-        <?php if (empty($employeesWithEmails)): ?>
+        <!-- Search and Filter Section -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <label class="form-label fw-semibold text-secondary">Search by Name</label>
+                <input type="text" id="searchEmployeeName" class="form-control" placeholder="Enter employee name...">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label fw-semibold text-secondary">Filter by Business Unit</label>
+                <select id="filterBusinessUnit" class="form-select">
+                    <option value="">All Units</option>
+                    <option value="Canteen">Canteen</option>
+                    <option value="Service Crew">Service Crew</option>
+                    <option value="Main Office">Main Office</option>
+                    <option value="Satellite Office">Satellite Office</option>
+                </select>
+            </div>
+        </div>
+        
+        <?php if (empty($allEmployees)): ?>
             <div class="alert alert-warning">
-                <i class="bi bi-exclamation-triangle"></i> No employees with email addresses found. 
-                Please add employee emails in the database first.
+                <i class="bi bi-exclamation-triangle"></i> No employees found for the selected period.
             </div>
         <?php else: ?>
             <form method="POST">
@@ -296,22 +319,24 @@ $payrollData = calculateRates($pdo, $startDate, $endDate);
                 </div>
 
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle">
+                    <table class="table table-hover align-middle" id="employeeTable">
                         <thead class="table-light">
                             <tr>
                                 <th width="50">
                                     <input type="checkbox" class="form-check-input" id="selectAllTable">
                                 </th>
                                 <th>Employee Name</th>
+                                <th>Business Unit</th>
                                 <th>Email Address</th>
                                 <th class="text-end">Gross Pay</th>
                                 <th class="text-end">Deductions</th>
                                 <th class="text-end">Net Pay</th>
                                 <th>Status</th>
+                                <th class="text-center">Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <?php foreach ($employeesWithEmails as $emp): ?>
+                        <tbody id="employeeTableBody">
+                            <?php foreach ($allEmployees as $emp): ?>
                                 <?php 
                                 // Find payroll data
                                 $empPayroll = null;
@@ -324,22 +349,40 @@ $payrollData = calculateRates($pdo, $startDate, $endDate);
                                 
                                 if (!$empPayroll) continue;
                                 $totals = $empPayroll['totals'];
+                                
+                                $email = $emp['Email'] ?? '';
+                                $hasValidEmail = !empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL);
+                                $statusClass = $hasValidEmail ? 'bg-success' : 'bg-danger';
+                                $statusText = $hasValidEmail ? 'Ready' : 'Invalid';
+                                $statusIcon = $hasValidEmail ? 'bi-check-circle' : 'bi-x-circle';
                                 ?>
-                                <tr>
+                                <tr data-name="<?= htmlspecialchars($emp['Name']) ?>" data-unit="<?= htmlspecialchars($emp['BusinessUnit']) ?>">
                                     <td>
                                         <input type="checkbox" name="employees[]" 
                                                value="<?= htmlspecialchars($emp['Name']) ?>" 
                                                class="form-check-input employee-checkbox">
                                     </td>
                                     <td><?= htmlspecialchars($emp['Name']) ?></td>
-                                    <td><small class="text-muted"><?= htmlspecialchars($emp['Email']) ?></small></td>
+                                    <td><?= htmlspecialchars($emp['BusinessUnit']) ?></td>
+                                    <td>
+                                        <span class="email-display">
+                                            <small class="text-muted"><?= $hasValidEmail ? htmlspecialchars($email) : 'No email' ?></small>
+                                        </span>
+                                    </td>
                                     <td class="text-end"><?= formatCurrency($totals['gross']) ?></td>
                                     <td class="text-end text-danger"><?= formatCurrency($totals['total_deductions']) ?></td>
                                     <td class="text-end fw-bold"><?= formatCurrency($totals['net']) ?></td>
                                     <td>
-                                        <span class="badge bg-success">
-                                            <i class="bi bi-check-circle"></i> Ready
+                                        <span class="badge <?= $statusClass ?>">
+                                            <i class="bi <?= $statusIcon ?>"></i> <?= $statusText ?>
                                         </span>
+                                    </td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-sm btn-outline-primary edit-email-btn" 
+                                                data-name="<?= htmlspecialchars($emp['Name']) ?>"
+                                                data-email="<?= htmlspecialchars($email) ?>">
+                                            <i class="bi bi-pencil"></i> Edit Email
+                                        </button>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -362,6 +405,8 @@ $payrollData = calculateRates($pdo, $startDate, $endDate);
         <h5 class="mb-3"><i class="bi bi-question-circle"></i> How to Use</h5>
         <ol>
             <li>Select the pay period using the date range above</li>
+            <li>Use the search and filter options to find specific employees</li>
+            <li>Update email addresses for employees with "Invalid" status</li>
             <li>Check the employees you want to send payslips to</li>
             <li>Click "Send Payslips via Email" to batch send</li>
             <li>Each employee will receive a PDF payslip attached to their email</li>
@@ -369,23 +414,92 @@ $payrollData = calculateRates($pdo, $startDate, $endDate);
     </div>
 </div>
 
+<!-- Email Edit Modal -->
+<div class="modal fade" id="emailEditModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Email Address</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="employee_name" id="edit_employee_name">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Employee Name</label>
+                        <input type="text" class="form-control" id="display_employee_name" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Email Address</label>
+                        <input type="email" name="email" id="edit_email" class="form-control" 
+                               placeholder="employee@example.com" required>
+                        <small class="text-muted">Enter a valid email address</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" name="update_email" class="btn btn-primary">
+                        <i class="bi bi-save"></i> Save Email
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
+const searchInput = document.getElementById('searchEmployeeName');
+const filterSelect = document.getElementById('filterBusinessUnit');
+const tableBody = document.getElementById('employeeTableBody');
+const emailEditModal = new bootstrap.Modal(document.getElementById('emailEditModal'));
+
+// Filter function
+function filterEmployees() {
+    const searchVal = searchInput.value.toLowerCase();
+    const unitVal = filterSelect.value.toLowerCase();
+    
+    const rows = tableBody.querySelectorAll('tr');
+    rows.forEach(row => {
+        const name = (row.dataset.name || '').toLowerCase();
+        const unit = (row.dataset.unit || '').toLowerCase();
+        
+        const nameMatch = !searchVal || name.includes(searchVal);
+        const unitMatch = !unitVal || unit === unitVal;
+        
+        row.style.display = (nameMatch && unitMatch) ? '' : 'none';
+    });
+    
+    updateSelectedCount();
+}
+
+searchInput.addEventListener('input', filterEmployees);
+filterSelect.addEventListener('change', filterEmployees);
+
 // Select all functionality
 document.getElementById('selectAll')?.addEventListener('change', function() {
     const checkboxes = document.querySelectorAll('.employee-checkbox');
-    checkboxes.forEach(cb => cb.checked = this.checked);
+    checkboxes.forEach(cb => {
+        if (cb.closest('tr').style.display !== 'none') {
+            cb.checked = this.checked;
+        }
+    });
     updateSelectedCount();
 });
 
 document.getElementById('selectAllTable')?.addEventListener('change', function() {
     const checkboxes = document.querySelectorAll('.employee-checkbox');
-    checkboxes.forEach(cb => cb.checked = this.checked);
+    checkboxes.forEach(cb => {
+        if (cb.closest('tr').style.display !== 'none') {
+            cb.checked = this.checked;
+        }
+    });
     updateSelectedCount();
 });
 
 // Update selected count
 function updateSelectedCount() {
-    const checked = document.querySelectorAll('.employee-checkbox:checked').length;
+    const checked = Array.from(document.querySelectorAll('.employee-checkbox:checked'))
+        .filter(cb => cb.closest('tr').style.display !== 'none').length;
     const countEl = document.getElementById('selectedCount');
     if (countEl) {
         countEl.textContent = `${checked} employee${checked !== 1 ? 's' : ''} selected`;
@@ -395,6 +509,20 @@ function updateSelectedCount() {
 // Add change listeners to all checkboxes
 document.querySelectorAll('.employee-checkbox').forEach(cb => {
     cb.addEventListener('change', updateSelectedCount);
+});
+
+// Edit email functionality
+document.querySelectorAll('.edit-email-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const name = this.dataset.name;
+        const email = this.dataset.email;
+        
+        document.getElementById('edit_employee_name').value = name;
+        document.getElementById('display_employee_name').value = name;
+        document.getElementById('edit_email').value = email;
+        
+        emailEditModal.show();
+    });
 });
 
 updateSelectedCount();

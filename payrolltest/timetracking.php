@@ -27,13 +27,17 @@ $employees = $empStmt->fetchAll(PDO::FETCH_ASSOC);
 
   <div class="card-panel mb-3 p-4 shadow-sm">
     <div class="row g-3 align-items-end">
-      <div class="col-md-4">
+      <div class="col-md-3">
         <label class="form-label fw-semibold text-secondary">Search by Name</label>
         <input type="text" id="searchName" class="form-control" placeholder="Enter employee name...">
       </div>
-      <div class="col-md-3">
-        <label class="form-label fw-semibold text-secondary">Filter by Date</label>
-        <input type="date" id="filterDate" class="form-control">
+      <div class="col-md-2">
+        <label class="form-label fw-semibold text-secondary">From Date</label>
+        <input type="date" id="filterDateFrom" class="form-control">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fw-semibold text-secondary">Until Date</label>
+        <input type="date" id="filterDateUntil" class="form-control">
       </div>
       <div class="col-md-3">
         <label class="form-label fw-semibold text-secondary">Sort By</label>
@@ -94,7 +98,7 @@ $employees = $empStmt->fetchAll(PDO::FETCH_ASSOC);
         <tbody id="recordsTbody">
           <?php if ($records): ?>
             <?php foreach ($records as $row): ?>
-              <tr data-id="<?= (int)$row['ID'] ?>">
+              <tr data-id="<?= (int)$row['ID'] ?>" data-date="<?= htmlspecialchars($row['Date']) ?>">
                 <td><input type="checkbox" class="rowCheck" value="<?= (int)$row['ID'] ?>"></td>
                 <td><?= htmlspecialchars($row['Date']) ?></td>
                 <td><?= htmlspecialchars($row['ShiftNumber']) ?></td>
@@ -236,22 +240,31 @@ function getRowsArray() { return Array.from(tbody.querySelectorAll('tr')); }
 
 /* Filtering + sorting */
 const searchName = document.getElementById('searchName');
-const filterDate = document.getElementById('filterDate');
+const filterDateFrom = document.getElementById('filterDateFrom');
+const filterDateUntil = document.getElementById('filterDateUntil');
 const sortOrder = document.getElementById('sortOrder');
 const resetBtn = document.getElementById('resetBtn');
 const resultCount = document.getElementById('resultCount');
 
 function filterTable() {
   const nameVal = (searchName.value || '').toLowerCase();
-  const dateVal = filterDate.value;
+  const dateFromVal = filterDateFrom.value;
+  const dateUntilVal = filterDateUntil.value;
   const order = sortOrder.value;
   let rows = getRowsArray();
+  
   rows.forEach(row => {
     const name = (row.cells[3]?.innerText || '').toLowerCase();
-    const date = (row.cells[1]?.innerText || '');
-    const match = (!nameVal || name.includes(nameVal)) && (!dateVal || date === dateVal);
+    const date = row.dataset.date || '';
+    
+    let dateMatch = true;
+    if (dateFromVal && date < dateFromVal) dateMatch = false;
+    if (dateUntilVal && date > dateUntilVal) dateMatch = false;
+    
+    const match = (!nameVal || name.includes(nameVal)) && dateMatch;
     row.dataset.visible = match ? 'true' : 'false';
   });
+  
   rows.sort((a,b) => {
     const ida = parseInt(a.dataset.id || '0', 10);
     const idb = parseInt(b.dataset.id || '0', 10);
@@ -397,9 +410,9 @@ recordsPerPageSelect.addEventListener('change', () => {
     displayPage();
 });
 
-[searchName, filterDate, sortOrder].forEach(el => el.addEventListener('input', filterTable));
+[searchName, filterDateFrom, filterDateUntil, sortOrder].forEach(el => el.addEventListener('input', filterTable));
 resetBtn.addEventListener('click', () => {
-  searchName.value = ''; filterDate.value = ''; sortOrder.value = 'recent'; filterTable();
+  searchName.value = ''; filterDateFrom.value = ''; filterDateUntil.value = ''; sortOrder.value = 'recent'; filterTable();
 });
 filterTable();
 

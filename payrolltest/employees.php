@@ -55,8 +55,8 @@ $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         <div class="d-flex justify-content-between align-items-center mt-4">
             <p class="text-muted mb-0 small" id="resultCount"><?= count($employees) ?> employees found.</p>
-            <button id="deleteSelected" class="btn btn-danger" disabled style="opacity: 0.5; cursor: not-allowed;">
-                <i class="bi bi-trash"></i> Delete Selected (<span id="selectedCount">0</span>)
+            <button id="editEmploymentStatus" class="btn btn-warning" disabled style="opacity: 0.5; cursor: not-allowed;">
+                <i class="bi bi-person-x"></i> Edit Employment Status (<span id="selectedCount">0</span>)
             </button>
         </div>
     </div>
@@ -91,8 +91,8 @@ $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 </thead>
                 <tbody>
                     <?php foreach ($employees as $row): ?>
-                        <tr data-id="<?= $row['LatestID'] ?>">
-                            <td><input type="checkbox" class="rowCheck" value="<?= $row['LatestID'] ?>"></td>
+                        <tr data-id="<?= $row['LatestID'] ?>" data-name="<?= htmlspecialchars($row['Name']) ?>">
+                            <td><input type="checkbox" class="rowCheck" value="<?= htmlspecialchars($row['Name']) ?>"></td>
                             <td><?= htmlspecialchars($row['Name']) ?></td>
                             <td><?= htmlspecialchars($row['BusinessUnit']) ?></td>
                             <td class="text-center">
@@ -114,6 +114,7 @@ $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </div>
 </div>
 
+<!-- Add Employee Modal -->
 <div class="modal fade" id="employeeModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -142,13 +143,40 @@ $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
               </div>
             </div>
           </div>
-          <button type="button" class="btn btn-outline-primary btn-sm" id="add-employee-row">Add Another Employee</button>
+          <button type="button" class="btn btn-outline-primary btn-sm" id="add-employee-row">
+            <i class="bi bi-plus-circle"></i> Add Another Employee
+          </button>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary rounded-pill" data-bs-dismiss="modal">Cancel</button>
           <button type="submit" class="btn btn-primary rounded-pill px-4">Save</button>
         </div>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- Employment Status Modal -->
+<div class="modal fade" id="employmentStatusModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Employment Status</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <i class="bi bi-exclamation-triangle"></i> 
+          <strong>Warning:</strong> Terminating an employee will delete ALL their records from the database permanently.
+        </div>
+        <div id="employment-status-fields"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="saveEmploymentStatus">
+          <i class="bi bi-save"></i> Save Changes
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -162,20 +190,33 @@ const tbody = document.querySelector('#employeeTable tbody');
 const resultCount = document.getElementById('resultCount');
 const employeeForm = document.getElementById('employeeForm');
 const selectAll = document.getElementById('selectAll');
-const deleteSelectedBtn = document.getElementById('deleteSelected');
+const editEmploymentStatusBtn = document.getElementById('editEmploymentStatus');
 const selectedCountSpan = document.getElementById('selectedCount');
 const recordsPerPageSelect = document.getElementById('recordsPerPage');
 const pageInfo = document.getElementById('pageInfo');
 const pagination = document.getElementById('pagination');
+const employmentStatusModal = new bootstrap.Modal(document.getElementById('employmentStatusModal'));
 
 let currentPage = 1;
 let filteredRows = [];
 
-// Add another employee row
+// Add another employee row with remove button
 document.getElementById('add-employee-row').addEventListener('click', () => {
   const employeeFields = document.getElementById('employee-fields');
   const newRow = document.querySelector('.employee-row').cloneNode(true);
   newRow.querySelectorAll('input, select').forEach(el => el.value = '');
+  
+  // Add remove button
+  const removeCol = document.createElement('div');
+  removeCol.className = 'col-12 text-end mt-2';
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'btn btn-danger btn-sm';
+  removeBtn.innerHTML = '<i class="bi bi-trash"></i> Remove';
+  removeBtn.onclick = () => newRow.remove();
+  removeCol.appendChild(removeBtn);
+  newRow.appendChild(removeCol);
+  
   employeeFields.appendChild(newRow);
 });
 
@@ -220,25 +261,20 @@ function displayPage() {
     const startIndex = showAll ? 0 : (currentPage - 1) * perPage;
     const endIndex = showAll ? totalRecords : startIndex + perPage;
     
-    // Hide all rows first
     Array.from(tbody.rows).forEach(row => row.style.display = 'none');
     
-    // Show only current page rows
     filteredRows.forEach((row, index) => {
         row.style.display = (index >= startIndex && index < endIndex) ? '' : 'none';
     });
     
-    // Update page info
     const showing = totalRecords === 0 ? 0 : startIndex + 1;
     const to = Math.min(endIndex, totalRecords);
     pageInfo.textContent = `Showing ${showing} to ${to} of ${totalRecords} entries`;
     
-    // Update pagination
     renderPagination(totalPages, showAll);
     
-    // Update select all checkbox
     selectAll.checked = false;
-    updateDeleteButton();
+    updateEmploymentStatusButton();
 }
 
 function renderPagination(totalPages, showAll) {
@@ -246,7 +282,6 @@ function renderPagination(totalPages, showAll) {
     
     if (showAll || totalPages <= 1) return;
     
-    // Previous button
     const prevLi = document.createElement('li');
     prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
     prevLi.innerHTML = `<a class="page-link" href="#">Previous</a>`;
@@ -255,7 +290,6 @@ function renderPagination(totalPages, showAll) {
     }
     pagination.appendChild(prevLi);
     
-    // Page numbers
     const maxVisible = 5;
     let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
     let endPage = Math.min(totalPages, startPage + maxVisible - 1);
@@ -304,7 +338,6 @@ function renderPagination(totalPages, showAll) {
         pagination.appendChild(lastLi);
     }
     
-    // Next button
     const nextLi = document.createElement('li');
     nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
     nextLi.innerHTML = `<a class="page-link" href="#">Next</a>`;
@@ -314,7 +347,7 @@ function renderPagination(totalPages, showAll) {
     pagination.appendChild(nextLi);
 }
 
-function updateDeleteButton() {
+function updateEmploymentStatusButton() {
     const visibleChecked = Array.from(document.querySelectorAll('.rowCheck:checked')).filter(
         chk => chk.closest('tr').style.display !== 'none'
     );
@@ -322,13 +355,13 @@ function updateDeleteButton() {
     selectedCountSpan.textContent = count;
     
     if (count > 0) {
-        deleteSelectedBtn.disabled = false;
-        deleteSelectedBtn.style.opacity = '1';
-        deleteSelectedBtn.style.cursor = 'pointer';
+        editEmploymentStatusBtn.disabled = false;
+        editEmploymentStatusBtn.style.opacity = '1';
+        editEmploymentStatusBtn.style.cursor = 'pointer';
     } else {
-        deleteSelectedBtn.disabled = true;
-        deleteSelectedBtn.style.opacity = '0.5';
-        deleteSelectedBtn.style.cursor = 'not-allowed';
+        editEmploymentStatusBtn.disabled = true;
+        editEmploymentStatusBtn.style.opacity = '0.5';
+        editEmploymentStatusBtn.style.cursor = 'not-allowed';
     }
 }
 
@@ -344,7 +377,6 @@ resetBtn.addEventListener('click', () => {
     filterTable();
 });
 
-// Add Employee
 document.getElementById('addBtn').addEventListener('click', () => {
     employeeForm.reset();
     document.getElementById('employeeID').value = '';
@@ -355,7 +387,6 @@ document.getElementById('addBtn').addEventListener('click', () => {
     }
 });
 
-// Edit Employee
 document.querySelectorAll('.editBtn').forEach(btn => {
     btn.addEventListener('click', () => {
         const id = btn.dataset.id;
@@ -380,7 +411,6 @@ document.querySelectorAll('.editBtn').forEach(btn => {
     });
 });
 
-// Save (Add/Edit)
 employeeForm.addEventListener('submit', e => {
     e.preventDefault();
     const formData = new FormData(employeeForm);
@@ -394,43 +424,87 @@ employeeForm.addEventListener('submit', e => {
         .catch(() => alert('Server error'));
 });
 
-// Select all checkboxes (only visible ones on current page)
 selectAll.addEventListener('change', () => {
     document.querySelectorAll('.rowCheck').forEach(chk => {
         if (chk.closest('tr').style.display !== 'none') {
             chk.checked = selectAll.checked;
         }
     });
-    updateDeleteButton();
+    updateEmploymentStatusButton();
 });
 
-// Update delete button when individual checkboxes change
 tbody.addEventListener('change', (e) => {
     if (e.target.classList.contains('rowCheck')) {
-        updateDeleteButton();
+        updateEmploymentStatusButton();
     }
 });
 
-// Delete selected
-deleteSelectedBtn.addEventListener('click', () => {
-    const ids = Array.from(document.querySelectorAll('.rowCheck:checked')).map(c => c.value);
-    if (ids.length === 0) return alert('Please select at least one employee.');
-    if (!confirm(`Delete ${ids.length} selected employee${ids.length>1?'s':''}?`)) return;
+// Edit Employment Status
+editEmploymentStatusBtn.addEventListener('click', () => {
+    const selectedNames = Array.from(document.querySelectorAll('.rowCheck:checked')).map(c => c.value);
+    
+    const container = document.getElementById('employment-status-fields');
+    container.innerHTML = '';
+    
+    selectedNames.forEach(name => {
+        const card = document.createElement('div');
+        card.className = 'card mb-3';
+        card.innerHTML = `
+            <div class="card-body">
+                <h6 class="card-title">${name}</h6>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="status_${name.replace(/\s+/g, '_')}" value="employed" id="employed_${name.replace(/\s+/g, '_')}" checked>
+                    <label class="form-check-label" for="employed_${name.replace(/\s+/g, '_')}">
+                        Currently Employed
+                    </label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input terminate-check" type="radio" name="status_${name.replace(/\s+/g, '_')}" value="terminate" id="terminate_${name.replace(/\s+/g, '_')}" data-name="${name}">
+                    <label class="form-check-label text-danger" for="terminate_${name.replace(/\s+/g, '_')}">
+                        Terminate Employee (Delete all records)
+                    </label>
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+    
+    employmentStatusModal.show();
+});
 
-    Promise.all(ids.map(id =>
+document.getElementById('saveEmploymentStatus').addEventListener('click', () => {
+    const terminateCheckboxes = document.querySelectorAll('.terminate-check:checked');
+    const employeesToTerminate = Array.from(terminateCheckboxes).map(chk => chk.dataset.name);
+    
+    if (employeesToTerminate.length === 0) {
+        alert('No changes to save.');
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to PERMANENTLY DELETE all records for ${employeesToTerminate.length} employee(s)?\n\n${employeesToTerminate.join('\n')}\n\nThis action cannot be undone!`)) {
+        return;
+    }
+    
+    // Delete all records for terminated employees
+    Promise.all(employeesToTerminate.map(name =>
         fetch('modals/delete_record.php', {
             method: 'POST',
-            body: new URLSearchParams({ ID: id })
+            body: new URLSearchParams({ Name: name })
         }).then(r => r.json())
     ))
     .then(results => {
-        alert('Selected records deleted successfully.');
-        location.reload();
+        const failed = results.filter(r => !r.success);
+        if (failed.length > 0) {
+            alert('Some employees could not be terminated. Please try again.');
+        } else {
+            alert(`Successfully terminated ${employeesToTerminate.length} employee(s).`);
+            location.reload();
+        }
     })
     .catch(() => alert('Server error'));
 });
 
 [searchName, filterUnit, sortOrder].forEach(el => el.addEventListener('input', filterTable));
 filterTable();
-updateDeleteButton();
+updateEmploymentStatusButton();
 </script>
