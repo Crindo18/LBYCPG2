@@ -310,25 +310,25 @@ $todaySchedule = $todayStmt->fetchAll(PDO::FETCH_ASSOC);
     <div class="row g-3 mt-4">
         <div class="col-md-3">
             <a href="timetracking.php" class="card-panel text-decoration-none text-center p-3 d-block hover-shadow">
-                <i class="bi bi-plus-circle display-5 text-primary"></i>
-                <h6 class="mt-2 mb-0">Add Time Record</h6>
+                <i class="bi bi-clock-history display-5 text-primary"></i>
+                <h6 class="mt-2 mb-0">View Time Records</h6>
             </a>
         </div>
         <div class="col-md-3">
             <a href="employees.php" class="card-panel text-decoration-none text-center p-3 d-block hover-shadow">
-                <i class="bi bi-person-plus display-5 text-success"></i>
-                <h6 class="mt-2 mb-0">Add Employee</h6>
+                <i class="bi bi-people-fill display-5 text-success"></i>
+                <h6 class="mt-2 mb-0">View Employees</h6>
             </a>
         </div>
         <div class="col-md-3">
             <a href="salary_summary.php" class="card-panel text-decoration-none text-center p-3 d-block hover-shadow">
-                <i class="bi bi-calculator display-5 text-info"></i>
-                <h6 class="mt-2 mb-0">View Salary Summary</h6>
+                <i class="bi bi-cash-stack display-5 text-info"></i>
+                <h6 class="mt-2 mb-0">View Payroll</h6>
             </a>
         </div>
         <div class="col-md-3">
             <a href="batch_upload.php" class="card-panel text-decoration-none text-center p-3 d-block hover-shadow">
-                <i class="bi bi-cloud-upload display-5 text-warning"></i>
+                <i class="bi bi-file-earmark-excel display-5 text-warning"></i>
                 <h6 class="mt-2 mb-0">Batch Upload</h6>
             </a>
         </div>

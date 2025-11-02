@@ -48,33 +48,47 @@ $employees = $empStmt->fetchAll(PDO::FETCH_ASSOC);
         </button>
       </div>
     </div>
-    <p class="text-muted mt-4 mb-0 small" id="resultCount"></p>
+    <div class="d-flex justify-content-between align-items-center mt-4">
+      <p class="text-muted mb-0 small" id="resultCount"></p>
+      <button id="deleteSelected" class="btn btn-danger" disabled style="opacity: 0.5; cursor: not-allowed;">
+        <i class="bi bi-trash"></i> Delete Selected (<span id="selectedCount">0</span>)
+      </button>
+    </div>
   </div>
 
   <div class="card-panel p-3">
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <button id="deleteSelected" class="btn btn-danger" style="display: none;">
-        <i class="bi bi-trash"></i> Delete Selected (<span id="selectedCount">0</span>)
-      </button>
-      <small class="text-muted ms-auto">Total: <?= count($records) ?> records</small>
+      <div>
+        <label class="form-label fw-semibold text-secondary me-2">Show</label>
+        <select id="recordsPerPage" class="form-select d-inline-block" style="width: auto;">
+          <option value="10">10</option>
+          <option value="20">20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="all">All</option>
+        </select>
+        <span class="text-muted ms-2">entries</span>
+      </div>
+      <div>
+        <span class="text-muted small" id="pageInfo">Showing 0 to 0 of 0 entries</span>
+      </div>
     </div>
+    
     <div class="table-responsive">
       <table class="table table-hover align-middle">
         <thead class="table-light">
           <tr>
-            <th><input type="checkbox" id="selectAll" title="Select All"></th>
-            <th>Date</th>
-            <th>Shift #</th>
-            <th>Name</th>
-            <th>Business Unit</th>
-            <th>Role</th>
-            <th>Time In</th>
-            <th>Time Out</th>
-            <th>Hours</th>
-            <th>Remarks</th>
-            <th>Deductions</th>
-            <th>Extra</th>
-            <th>Actions</th>
+            <th style="width: 40px;"><input type="checkbox" id="selectAll" title="Select All"></th>
+            <th style="width: 110px;">Date</th>
+            <th style="width: 80px;">Shift #</th>
+            <th style="width: 180px;">Name</th>
+            <th style="width: 140px;">Business Unit</th>
+            <th style="width: 100px;">Role</th>
+            <th style="width: 90px;">Time In</th>
+            <th style="width: 90px;">Time Out</th>
+            <th style="width: 80px;">Hours</th>
+            <th style="width: 100px;">Remarks</th>
+            <th style="width: 100px;" class="text-center">Actions</th>
           </tr>
         </thead>
         <tbody id="recordsTbody">
@@ -91,23 +105,24 @@ $employees = $empStmt->fetchAll(PDO::FETCH_ASSOC);
                 <td><?= htmlspecialchars($row['TimeOut']) ?></td>
                 <td><?= htmlspecialchars($row['Hours']) ?></td>
                 <td><?= htmlspecialchars($row['Remarks']) ?></td>
-                <td class="text-danger">₱<?= number_format(abs(floatval($row['Deductions'] ?? 0)), 2) ?></td>
-                <td class="text-success">₱<?= number_format(floatval($row['Extra'] ?? 0), 2) ?></td>
-                <td>
+                <td class="text-center">
                   <button class="btn btn-sm btn-outline-primary editBtn" data-id="<?= (int)$row['ID'] ?>">
                     <i class="bi bi-pencil-square"></i>
-                  </button>
-                  <button class="btn btn-sm btn-outline-danger deleteBtn" data-id="<?= (int)$row['ID'] ?>">
-                    <i class="bi bi-trash"></i>
                   </button>
                 </td>
               </tr>
             <?php endforeach; ?>
           <?php else: ?>
-            <tr><td colspan="13" class="text-center text-muted">No time records found.</td></tr>
+            <tr><td colspan="11" class="text-center text-muted">No time records found.</td></tr>
           <?php endif; ?>
         </tbody>
       </table>
+    </div>
+    
+    <div class="d-flex justify-content-center mt-3">
+      <nav>
+        <ul class="pagination" id="pagination"></ul>
+      </nav>
     </div>
   </div>
 </div>
@@ -203,27 +218,19 @@ $employees = $empStmt->fetchAll(PDO::FETCH_ASSOC);
   </div>
 </div>
 
-<div class="modal fade" id="deleteModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Confirm Delete</h5>
-      </div>
-      <div class="modal-body">Are you sure you want to delete this record?</div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-danger" id="confirmDelete">Delete</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <script>
 const tbody = document.getElementById('recordsTbody');
 const recordModalEl = document.getElementById('recordModal');
 const recordModal = new bootstrap.Modal(recordModalEl);
-const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
-let currentID = null;
+const selectAll = document.getElementById('selectAll');
+const deleteSelectedBtn = document.getElementById('deleteSelected');
+const selectedCountSpan = document.getElementById('selectedCount');
+const recordsPerPageSelect = document.getElementById('recordsPerPage');
+const pageInfo = document.getElementById('pageInfo');
+const pagination = document.getElementById('pagination');
+
+let currentPage = 1;
+let filteredRows = [];
 
 function getRowsArray() { return Array.from(tbody.querySelectorAll('tr')); }
 
@@ -240,9 +247,10 @@ function filterTable() {
   const order = sortOrder.value;
   let rows = getRowsArray();
   rows.forEach(row => {
-    const name = (row.cells[2]?.innerText || '').toLowerCase();
-    const date = (row.cells[0]?.innerText || '');
-    row.style.display = (!nameVal || name.includes(nameVal)) && (!dateVal || date === dateVal) ? '' : 'none';
+    const name = (row.cells[3]?.innerText || '').toLowerCase();
+    const date = (row.cells[1]?.innerText || '');
+    const match = (!nameVal || name.includes(nameVal)) && (!dateVal || date === dateVal);
+    row.dataset.visible = match ? 'true' : 'false';
   });
   rows.sort((a,b) => {
     const ida = parseInt(a.dataset.id || '0', 10);
@@ -250,9 +258,144 @@ function filterTable() {
     return order === 'oldest' ? ida - idb : idb - ida;
   });
   rows.forEach(r => tbody.appendChild(r));
-  const visible = rows.filter(r => r.style.display !== 'none').length;
+  
+  filteredRows = rows.filter(r => r.dataset.visible === 'true');
+  const visible = filteredRows.length;
   resultCount.textContent = `${visible} record${visible !== 1 ? 's' : ''} found.`;
+  
+  currentPage = 1;
+  displayPage();
 }
+
+function displayPage() {
+    const recordsPerPage = recordsPerPageSelect.value;
+    const showAll = recordsPerPage === 'all';
+    const perPage = showAll ? filteredRows.length : parseInt(recordsPerPage);
+    
+    const totalRecords = filteredRows.length;
+    const totalPages = showAll ? 1 : Math.ceil(totalRecords / perPage);
+    
+    if (currentPage > totalPages) currentPage = totalPages || 1;
+    
+    const startIndex = showAll ? 0 : (currentPage - 1) * perPage;
+    const endIndex = showAll ? totalRecords : startIndex + perPage;
+    
+    // Hide all rows first
+    Array.from(tbody.rows).forEach(row => row.style.display = 'none');
+    
+    // Show only current page rows
+    filteredRows.forEach((row, index) => {
+        row.style.display = (index >= startIndex && index < endIndex) ? '' : 'none';
+    });
+    
+    // Update page info
+    const showing = totalRecords === 0 ? 0 : startIndex + 1;
+    const to = Math.min(endIndex, totalRecords);
+    pageInfo.textContent = `Showing ${showing} to ${to} of ${totalRecords} entries`;
+    
+    // Update pagination
+    renderPagination(totalPages, showAll);
+    
+    // Update select all checkbox
+    selectAll.checked = false;
+    updateDeleteButton();
+}
+
+function renderPagination(totalPages, showAll) {
+    pagination.innerHTML = '';
+    
+    if (showAll || totalPages <= 1) return;
+    
+    // Previous button
+    const prevLi = document.createElement('li');
+    prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+    prevLi.innerHTML = `<a class="page-link" href="#">Previous</a>`;
+    if (currentPage > 1) {
+        prevLi.onclick = (e) => { e.preventDefault(); currentPage--; displayPage(); };
+    }
+    pagination.appendChild(prevLi);
+    
+    // Page numbers
+    const maxVisible = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+    
+    if (endPage - startPage < maxVisible - 1) {
+        startPage = Math.max(1, endPage - maxVisible + 1);
+    }
+    
+    if (startPage > 1) {
+        const firstLi = document.createElement('li');
+        firstLi.className = 'page-item';
+        firstLi.innerHTML = `<a class="page-link" href="#">1</a>`;
+        firstLi.onclick = (e) => { e.preventDefault(); currentPage = 1; displayPage(); };
+        pagination.appendChild(firstLi);
+        
+        if (startPage > 2) {
+            const dots = document.createElement('li');
+            dots.className = 'page-item disabled';
+            dots.innerHTML = `<span class="page-link">...</span>`;
+            pagination.appendChild(dots);
+        }
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        const li = document.createElement('li');
+        li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+        li.innerHTML = `<a class="page-link" href="#">${i}</a>`;
+        if (i !== currentPage) {
+            li.onclick = (e) => { e.preventDefault(); currentPage = i; displayPage(); };
+        }
+        pagination.appendChild(li);
+    }
+    
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            const dots = document.createElement('li');
+            dots.className = 'page-item disabled';
+            dots.innerHTML = `<span class="page-link">...</span>`;
+            pagination.appendChild(dots);
+        }
+        
+        const lastLi = document.createElement('li');
+        lastLi.className = 'page-item';
+        lastLi.innerHTML = `<a class="page-link" href="#">${totalPages}</a>`;
+        lastLi.onclick = (e) => { e.preventDefault(); currentPage = totalPages; displayPage(); };
+        pagination.appendChild(lastLi);
+    }
+    
+    // Next button
+    const nextLi = document.createElement('li');
+    nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+    nextLi.innerHTML = `<a class="page-link" href="#">Next</a>`;
+    if (currentPage < totalPages) {
+        nextLi.onclick = (e) => { e.preventDefault(); currentPage++; displayPage(); };
+    }
+    pagination.appendChild(nextLi);
+}
+
+function updateDeleteButton() {
+    const visibleChecked = Array.from(document.querySelectorAll('.rowCheck:checked')).filter(
+        chk => chk.closest('tr').style.display !== 'none'
+    );
+    const count = visibleChecked.length;
+    selectedCountSpan.textContent = count;
+    
+    if (count > 0) {
+        deleteSelectedBtn.disabled = false;
+        deleteSelectedBtn.style.opacity = '1';
+        deleteSelectedBtn.style.cursor = 'pointer';
+    } else {
+        deleteSelectedBtn.disabled = true;
+        deleteSelectedBtn.style.opacity = '0.5';
+        deleteSelectedBtn.style.cursor = 'not-allowed';
+    }
+}
+
+recordsPerPageSelect.addEventListener('change', () => {
+    currentPage = 1;
+    displayPage();
+});
 
 [searchName, filterDate, sortOrder].forEach(el => el.addEventListener('input', filterTable));
 resetBtn.addEventListener('click', () => {
@@ -309,16 +452,11 @@ document.getElementById('addBtn').addEventListener('click', () => {
   if (removeBtn) removeBtn.parentElement.remove();
 });
 
-/* Event listeners for edit and delete */
+/* Event listeners for edit */
 function attachEventListeners() {
   document.querySelectorAll('.editBtn').forEach(btn => {
     btn.removeEventListener('click', handleEdit);
     btn.addEventListener('click', handleEdit);
-  });
-  
-  document.querySelectorAll('.deleteBtn').forEach(btn => {
-    btn.removeEventListener('click', handleDelete);
-    btn.addEventListener('click', handleDelete);
   });
 }
 
@@ -363,11 +501,6 @@ function handleEdit(e) {
     }).catch(() => alert('Server error'));
 }
 
-function handleDelete(e) {
-  currentID = e.target.closest('button').dataset.id;
-  deleteModal.show();
-}
-
 attachEventListeners();
 
 /* Auto-populate business unit when selecting employee */
@@ -383,18 +516,40 @@ document.querySelectorAll('.name-select').forEach(select => {
   });
 });
 
-/* Handle Delete Confirmation */
-document.getElementById('confirmDelete').addEventListener('click', () => {
-  fetch('modals/delete_record.php', { 
-    method: 'POST', 
-    body: new URLSearchParams({ ID: currentID }) 
-  })
-  .then(r => r.json())
-  .then(d => { 
-    alert(d.message); 
-    if (d.success) location.reload(); 
-  })
-  .catch(() => alert('Server error'));
+/* Select all checkboxes (only visible ones on current page) */
+selectAll.addEventListener('change', () => {
+    document.querySelectorAll('.rowCheck').forEach(chk => {
+        if (chk.closest('tr').style.display !== 'none') {
+            chk.checked = selectAll.checked;
+        }
+    });
+    updateDeleteButton();
+});
+
+/* Update delete button when individual checkboxes change */
+tbody.addEventListener('change', (e) => {
+    if (e.target.classList.contains('rowCheck')) {
+        updateDeleteButton();
+    }
+});
+
+/* Delete selected records */
+deleteSelectedBtn.addEventListener('click', () => {
+    const ids = Array.from(document.querySelectorAll('.rowCheck:checked')).map(c => c.value);
+    if (ids.length === 0) return alert('Please select at least one record.');
+    if (!confirm(`Delete ${ids.length} selected record${ids.length>1?'s':''}?`)) return;
+
+    Promise.all(ids.map(id =>
+        fetch('modals/delete_record.php', {
+            method: 'POST',
+            body: new URLSearchParams({ ID: id })
+        }).then(r => r.json())
+    ))
+    .then(results => {
+        alert('Selected records deleted successfully.');
+        location.reload();
+    })
+    .catch(() => alert('Server error'));
 });
 
 /* Handle Form Submit (Add/Edit) */
@@ -413,4 +568,7 @@ document.getElementById('recordForm').addEventListener('submit', e => {
     })
     .catch(() => alert('Server error'));
 });
+
+// Initialize delete button state
+updateDeleteButton();
 </script>

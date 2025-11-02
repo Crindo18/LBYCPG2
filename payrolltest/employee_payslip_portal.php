@@ -31,9 +31,10 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_work_info') {
         $startDate = $date->format('Y-m-01');
         $endDate = $date->format('Y-m-t');
         
+        // Count distinct dates within the period
         $stmt = $pdo->prepare("
             SELECT COUNT(DISTINCT Date) as work_days, 
-                   SUM(Hours) as Hours
+                   SUM(Hours) as total_hours
             FROM payrolldata 
             WHERE Name = ? 
             AND Date BETWEEN ? AND ?
@@ -46,7 +47,19 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_work_info') {
         $emailStmt->execute([$employeeName]);
         $emailResult = $emailStmt->fetch(PDO::FETCH_ASSOC);
         
-        // Calculate payroll data
+        // Get specific deduction data from payrolldata for misload/shortage
+        $deductionStmt = $pdo->prepare("
+            SELECT SUM(ABS(Deductions)) as total_deductions,
+                   GROUP_CONCAT(DISTINCT Extra) as extra_remarks
+            FROM payrolldata 
+            WHERE Name = ? 
+            AND Date BETWEEN ? AND ?
+            AND (Deductions < 0 OR Extra LIKE '%Short%' OR Extra LIKE '%Misload%')
+        ");
+        $deductionStmt->execute([$employeeName, $startDate, $endDate]);
+        $deductionResult = $deductionStmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Calculate payroll data with the specific date range
         $payrollData = calculateRates($pdo, $startDate, $endDate);
         $employeeData = null;
         
@@ -57,10 +70,18 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_work_info') {
             }
         }
         
+        // Calculate misload/shortage from database deductions and extra remarks
+        $misloadAmount = 0;
+        if (!empty($deductionResult['extra_remarks']) && 
+            (stripos($deductionResult['extra_remarks'], 'short') !== false || 
+             stripos($deductionResult['extra_remarks'], 'misload') !== false)) {
+            $misloadAmount = $deductionResult['total_deductions'] ?? 0;
+        }
+        
         header('Content-Type: application/json');
         echo json_encode([
             'work_days' => $result['work_days'] ?? 0,
-            'Hours' => round($result['Hours'] ?? 0, 2),
+            'total_hours' => round($result['total_hours'] ?? 0, 2),
             'email' => $emailResult['email'] ?? '',
             'earnings' => [
                 'basic_rate' => $employeeData ? $employeeData['totals']['regular'] : 0,
@@ -75,9 +96,9 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_work_info') {
                 'sss' => $employeeData ? $employeeData['totals']['sss'] : 0,
                 'philhealth' => $employeeData ? $employeeData['totals']['phic'] : 0,
                 'pagibig' => $employeeData ? $employeeData['totals']['hdmf'] : 0,
-                'gov_loan' => 0,
+                'gov_loan' => $employeeData ? $employeeData['totals']['loan'] : 0,
                 'late' => $employeeData ? $employeeData['totals']['late'] : 0,
-                'misload' => 0,
+                'misload' => $misloadAmount,
                 'uniform' => 0
             ]
         ]);
@@ -93,7 +114,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = $_POST['email'];
         $payPeriod = $_POST['pay_period'];
         $workedDays = (int)$_POST['worked_days'];
-        $totalHours = (float)$_POST['Hours'];
+        $totalHours = (float)$_POST['total_hours'];
+        
+        // Get date range
+        $date = new DateTime($payPeriod . '-01');
+        $startDate = $date->format('Y-m-01');
+        $endDate = $date->format('Y-m-t');
         
         // Save to employee_info table
         $checkStmt = $pdo->prepare("SELECT id FROM employee_info WHERE name = ?");
@@ -107,11 +133,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $updateStmt->execute([$email, $employeeName]);
         }
         
-        // Get business unit from calculate_rates
-        $date = new DateTime($payPeriod . '-01');
-        $startDate = $date->format('Y-m-01');
-        $endDate = $date->format('Y-m-t');
+        // Update payrolldata with new deductions and extras
+        $misloadAmount = (float)$_POST['misload'];
+        $uniformAmount = (float)$_POST['uniform'];
+        $silAmount = (float)$_POST['sil'];
         
+        if ($misloadAmount > 0) {
+            // Add misload as negative deduction and short remark
+            $updateDeductionStmt = $pdo->prepare("
+                UPDATE payrolldata 
+                SET Deductions = -?,
+                    Extra = CASE 
+                        WHEN Extra IS NULL OR Extra = '' THEN 'Short' 
+                        ELSE CONCAT(Extra, ', Short') 
+                    END
+                WHERE Name = ? 
+                AND Date BETWEEN ? AND ?
+            ");
+            $updateDeductionStmt->execute([$misloadAmount, $employeeName, $startDate, $endDate]);
+        }
+        
+        if ($uniformAmount > 0) {
+            // Add uniform as negative deduction
+            $updateUniformStmt = $pdo->prepare("
+                UPDATE payrolldata 
+                SET Deductions = Deductions - ? 
+                WHERE Name = ? 
+                AND Date BETWEEN ? AND ?
+            ");
+            $updateUniformStmt->execute([$uniformAmount, $employeeName, $startDate, $endDate]);
+        }
+        
+        if ($silAmount > 0) {
+            // Add SIL as extra
+            $updateSilStmt = $pdo->prepare("
+                UPDATE payrolldata 
+                SET Extra = CASE 
+                    WHEN Extra IS NULL OR Extra = '' THEN 'SIL' 
+                    ELSE CONCAT(Extra, ', SIL') 
+                END
+                WHERE Name = ? 
+                AND Date BETWEEN ? AND ?
+            ");
+            $updateSilStmt->execute([$employeeName, $startDate, $endDate]);
+        }
+        
+        // Recalculate payroll data after updates
         $payrollData = calculateRates($pdo, $startDate, $endDate);
         $employeeData = null;
         
@@ -122,12 +189,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
-        // Save payroll with user inputs
+        // Save payroll with updated calculations
         $_SESSION['payroll_data'][$employee_id] = [
             'name' => $employeeName,
             'pay_period' => $payPeriod,
             'worked_days' => $workedDays,
-            'Hours' => $Hours,
+            'total_hours' => $totalHours,
             'earnings' => [
                 'Basic Rate' => (float)$_POST['basic_rate'],
                 'Overtime Pay' => (float)$_POST['overtime'],
@@ -148,9 +215,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ],
             'status' => 'pending',
             'email' => $email,
-            'business_unit' => $employeeData ? $employeeData['business_unit'] : 'N/A'
+            'business_unit' => $employeeData ? $employeeData['business_unit'] : 'N/A',
+            'start_date' => $startDate,
+            'end_date' => $endDate
         ];
-        $success_message = "Payroll entry saved successfully!";
+        $success_message = "Payroll entry saved successfully and database updated!";
     }
     
     if (isset($_POST['batch_approve']) && !isset($_POST['confirm_no_signature'])) {
@@ -242,8 +311,35 @@ function formatPayPeriod($period) {
     return $date ? $date->format('F Y') : $period;
 }
 
+function filterByDateRange($emp, $fromMonth, $toMonth) {
+    if (empty($fromMonth) && empty($toMonth)) {
+        return true;
+    }
+    
+    $empPeriod = $emp['pay_period'];
+    $empDate = DateTime::createFromFormat('Y-m', $empPeriod);
+    
+    if (!empty($fromMonth)) {
+        $fromDate = DateTime::createFromFormat('Y-m', $fromMonth);
+        if ($empDate < $fromDate) {
+            return false;
+        }
+    }
+    
+    if (!empty($toMonth)) {
+        $toDate = DateTime::createFromFormat('Y-m', $toMonth);
+        if ($empDate > $toDate) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
 $searchQuery = $_GET['employee'] ?? '';
 $statusFilter = $_GET['status'] ?? 'all';
+$fromMonth = $_GET['from_month'] ?? '';
+$toMonth = $_GET['to_month'] ?? '';
 ?>
 
 <!DOCTYPE html>
@@ -333,7 +429,7 @@ $statusFilter = $_GET['status'] ?? 'all';
             <h2 class="mb-4"><i class="bi bi-speedometer2"></i> Payroll Overview</h2>
             <form method="GET" class="row g-3 mb-4">
                 <input type="hidden" name="step" value="0">
-                <div class="col-md-5">
+                <div class="col-md-3">
                     <label class="form-label fw-semibold">Employee</label>
                     <select name="employee" class="form-select">
                         <option value="">All Employees</option>
@@ -342,7 +438,15 @@ $statusFilter = $_GET['status'] ?? 'all';
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold">From Month</label>
+                    <input type="month" name="from_month" class="form-control" value="<?= $fromMonth ?>">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold">To Month</label>
+                    <input type="month" name="to_month" class="form-control" value="<?= $toMonth ?>">
+                </div>
+                <div class="col-md-2">
                     <label class="form-label fw-semibold">Status</label>
                     <select name="status" class="form-select">
                         <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>All</option>
@@ -355,8 +459,12 @@ $statusFilter = $_GET['status'] ?? 'all';
                 </div>
             </form>
             <?php 
-            $filteredData = array_filter($_SESSION['payroll_data'], function($emp) use ($searchQuery, $statusFilter) {
-                return (empty($searchQuery) || $emp['name'] === $searchQuery) && ($statusFilter === 'all' || $emp['status'] === $statusFilter);
+            $filteredData = array_filter($_SESSION['payroll_data'], function($emp) use ($searchQuery, $statusFilter, $fromMonth, $toMonth) {
+                $matchesEmployee = empty($searchQuery) || $emp['name'] === $searchQuery;
+                $matchesStatus = $statusFilter === 'all' || $emp['status'] === $statusFilter;
+                $matchesDate = filterByDateRange($emp, $fromMonth, $toMonth);
+                
+                return $matchesEmployee && $matchesStatus && $matchesDate;
             });
             ?>
             <?php if (empty($filteredData)): ?>
@@ -418,7 +526,7 @@ $statusFilter = $_GET['status'] ?? 'all';
                 </div>
                 <div class="col-md-3">
                     <label class="form-label fw-semibold">Total Hours</label>
-                    <input type="number" step="0.01" name="Hours" id="Hours" class="form-control" readonly style="background-color:#e9ecef;">
+                    <input type="number" step="0.01" name="total_hours" id="total_hours" class="form-control" readonly style="background-color:#e9ecef;">
                 </div>
                 
                 <div class="col-12 mt-4">
@@ -505,7 +613,7 @@ $statusFilter = $_GET['status'] ?? 'all';
                     .then(r => r.json())
                     .then(data => {
                         document.getElementById('worked_days').value = data.work_days;
-                        document.getElementById('Hours').value = data.Hours;
+                        document.getElementById('total_hours').value = data.total_hours;
                         if(data.email) document.getElementById('email').value = data.email;
                         
                         // Populate earnings
@@ -554,7 +662,7 @@ $statusFilter = $_GET['status'] ?? 'all';
             </div>
             <form method="GET" class="row g-3 mb-4">
                 <input type="hidden" name="step" value="2">
-                <div class="col-md-5">
+                <div class="col-md-3">
                     <label class="form-label fw-semibold">Employee</label>
                     <select name="employee" class="form-select">
                         <option value="">All</option>
@@ -563,7 +671,15 @@ $statusFilter = $_GET['status'] ?? 'all';
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold">From Month</label>
+                    <input type="month" name="from_month" class="form-control" value="<?= $fromMonth ?>">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold">To Month</label>
+                    <input type="month" name="to_month" class="form-control" value="<?= $toMonth ?>">
+                </div>
+                <div class="col-md-2">
                     <label class="form-label fw-semibold">Status</label>
                     <select name="status" class="form-select">
                         <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>All</option>
@@ -574,8 +690,12 @@ $statusFilter = $_GET['status'] ?? 'all';
                 <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i> Search</button></div>
             </form>
             <?php 
-            $filtered = array_filter($_SESSION['payroll_data'], function($emp) use ($searchQuery, $statusFilter) {
-                return (empty($searchQuery) || $emp['name'] === $searchQuery) && ($statusFilter === 'all' || $emp['status'] === $statusFilter);
+            $filtered = array_filter($_SESSION['payroll_data'], function($emp) use ($searchQuery, $statusFilter, $fromMonth, $toMonth) {
+                $matchesEmployee = empty($searchQuery) || $emp['name'] === $searchQuery;
+                $matchesStatus = $statusFilter === 'all' || $emp['status'] === $statusFilter;
+                $matchesDate = filterByDateRange($emp, $fromMonth, $toMonth);
+                
+                return $matchesEmployee && $matchesStatus && $matchesDate;
             });
             ?>
             <?php if (empty($filtered)): ?>
@@ -634,7 +754,7 @@ $statusFilter = $_GET['status'] ?? 'all';
             <h3 class="mb-4"><i class="bi bi-printer"></i> Print Payslips</h3>
             <form method="GET" class="row g-3 mb-4">
                 <input type="hidden" name="step" value="3">
-                <div class="col-md-5">
+                <div class="col-md-4">
                     <label class="form-label fw-semibold">Employee</label>
                     <select name="employee" class="form-select">
                         <option value="">All</option>
@@ -644,20 +764,23 @@ $statusFilter = $_GET['status'] ?? 'all';
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label fw-semibold">Status</label>
-                    <select name="status" class="form-select">
-                        <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>All</option>
-                        <option value="approved" <?= $statusFilter === 'approved' ? 'selected' : '' ?>>Approved</option>
-                    </select>
+                    <label class="form-label fw-semibold">From Month</label>
+                    <input type="month" name="from_month" class="form-control" value="<?= $fromMonth ?>">
                 </div>
-                <div class="col-md-3 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i> Search</button></div>
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold">To Month</label>
+                    <input type="month" name="to_month" class="form-control" value="<?= $toMonth ?>">
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i> Search</button>
+                </div>
             </form>
             <?php 
-            $approvedPayrolls = array_filter($_SESSION['payroll_data'], function($emp) use ($searchQuery, $statusFilter) {
+            $approvedPayrolls = array_filter($_SESSION['payroll_data'], function($emp) use ($searchQuery, $fromMonth, $toMonth) {
                 $matchesEmployee = empty($searchQuery) || $emp['name'] === $searchQuery;
-                $matchesStatus = ($statusFilter === 'all' && $emp['status'] === 'approved') || 
-                                ($statusFilter !== 'all' && $emp['status'] === $statusFilter);
-                return $matchesEmployee && $matchesStatus && $emp['status'] === 'approved';
+                $matchesDate = filterByDateRange($emp, $fromMonth, $toMonth);
+                
+                return $matchesEmployee && $matchesDate && $emp['status'] === 'approved';
             });
             ?>
             <?php if (empty($approvedPayrolls)): ?>
@@ -680,8 +803,8 @@ $statusFilter = $_GET['status'] ?? 'all';
                         </div>
                     </div>
                     <div class="card-body">
-                        <button type="button" class="btn btn-sm btn-info" onclick="togglePayslip('detail-<?= $id; ?>')"><i class="bi bi-eye"></i> View</button>
-                        <a href="payslip_pdf.php?id=<?= $id; ?>" target="_blank" class="btn btn-sm btn-success"><i class="bi bi-file-pdf"></i> Download</a>
+                        <button type="button" class="btn btn-sm btn-info" onclick="togglePayslip('detail-<?= $id; ?>')"><i class="bi bi-eye"></i> View Summary</button>
+                        <a href="payslip_pdf.php?id=<?= $id; ?>&name=<?= urlencode($emp['name']) ?>&start=<?= $emp['start_date'] ?>&end=<?= $emp['end_date'] ?>" target="_blank" class="btn btn-sm btn-success"><i class="bi bi-file-pdf"></i> Download</a>
                         <div id="detail-<?= $id; ?>" style="display:none;" class="mt-3">
                             <div class="payslip-container" id="payslip-<?= $id; ?>">
                                 <div class="text-center mb-4">
@@ -696,7 +819,7 @@ $statusFilter = $_GET['status'] ?? 'all';
                                     </div>
                                     <div class="col-md-6">
                                         <p><strong>Period:</strong> <?= formatPayPeriod($emp['pay_period']); ?></p>
-                                        <p><strong>Days Worked:</strong> <?= htmlspecialchars($emp['worked_days']); ?> (<?= htmlspecialchars($emp['Hours']); ?> hrs)</p>
+                                        <p><strong>Days Worked:</strong> <?= htmlspecialchars($emp['worked_days']); ?> (<?= htmlspecialchars($emp['total_hours']); ?> hrs)</p>
                                     </div>
                                 </div>
                                 <div class="row">
@@ -758,7 +881,11 @@ $statusFilter = $_GET['status'] ?? 'all';
             cbs.forEach((cb, i) => {
                 setTimeout(() => {
                     const id = cb.value;
-                    window.open('payslip_pdf.php?id=' + id, '_blank');
+                    const empData = <?= json_encode($approvedPayrolls); ?>;
+                    if (empData[id]) {
+                        const emp = empData[id];
+                        window.open(`payslip_pdf.php?id=${id}&name=${encodeURIComponent(emp.name)}&start=${emp.start_date}&end=${emp.end_date}`, '_blank');
+                    }
                 }, i * 500);
             });
         }

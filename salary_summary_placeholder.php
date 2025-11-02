@@ -12,7 +12,6 @@ $filterBusinessUnit = $_GET['business_unit'] ?? '';
 $filterRole = $_GET['role'] ?? '';
 $filterShift = $_GET['shift'] ?? '';
 $filterRemarks = $_GET['remarks'] ?? '';
-$sortOrder = $_GET['sort'] ?? '';
 
 // Calculate payroll using your calculate_rates.php function
 $payrollData = calculateRates($pdo, $startDate, $endDate);
@@ -54,17 +53,6 @@ if ($filterBusinessUnit || $filterRole || $filterShift || $filterRemarks) {
     });
 }
 
-// Apply sorting
-if ($sortOrder === 'highest') {
-    usort($employees, function($a, $b) {
-        return $b['totals']['net'] <=> $a['totals']['net'];
-    });
-} elseif ($sortOrder === 'lowest') {
-    usort($employees, function($a, $b) {
-        return $a['totals']['net'] <=> $b['totals']['net'];
-    });
-}
-
 // Get unique values for dropdowns
 $businessUnits = $pdo->query("SELECT DISTINCT BusinessUnit FROM payrolldata WHERE BusinessUnit IS NOT NULL ORDER BY BusinessUnit")->fetchAll(PDO::FETCH_COLUMN);
 $roles = $pdo->query("SELECT DISTINCT Role FROM payrolldata WHERE Role IS NOT NULL ORDER BY Role")->fetchAll(PDO::FETCH_COLUMN);
@@ -81,10 +69,10 @@ $grandTotal = [
 
 <div class="main-content">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2><i class="bi bi-cash-stack"></i> Payroll Overview</h2>
+        <h2><i class="bi bi-cash-stack"></i> Salary Summary</h2>
         <div>
-            <button class="btn btn-danger" id="downloadSelectedPDFs" onclick="downloadSelectedPDFs()" disabled>
-                <i class="bi bi-file-pdf"></i> Download Selected PDFs (<span id="selectedCount">0</span>)
+            <button class="btn btn-success" onclick="window.print()">
+                <i class="bi bi-printer"></i> Print Report
             </button>
             <button class="btn btn-primary" onclick="exportToExcel()">
                 <i class="bi bi-file-excel"></i> Export Excel
@@ -94,27 +82,19 @@ $grandTotal = [
 
     <!-- Date Range Filter -->
     <div class="card-panel mb-3 p-4">
-        <form method="GET" id="filterForm" class="row g-3 align-items-end">
-            <div class="col-md-2">
+        <form method="GET" class="row g-3 align-items-end">
+            <div class="col-md-3">
                 <label class="form-label fw-semibold"><i class="bi bi-calendar3"></i> Start Date</label>
-                <input type="date" name="start_date" id="start_date" class="form-control" value="<?= htmlspecialchars($startDate) ?>" required>
+                <input type="date" name="start_date" class="form-control" value="<?= htmlspecialchars($startDate) ?>" required>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-3">
                 <label class="form-label fw-semibold"><i class="bi bi-calendar3"></i> End Date</label>
-                <input type="date" name="end_date" id="end_date" class="form-control" value="<?= htmlspecialchars($endDate) ?>" required>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label fw-semibold"><i class="bi bi-sort-down"></i> Sort By</label>
-                <select name="sort" id="sort" class="form-select">
-                    <option value="">Default</option>
-                    <option value="highest" <?= $sortOrder === 'highest' ? 'selected' : '' ?>>Highest Pay First</option>
-                    <option value="lowest" <?= $sortOrder === 'lowest' ? 'selected' : '' ?>>Lowest Pay First</option>
-                </select>
+                <input type="date" name="end_date" class="form-control" value="<?= htmlspecialchars($endDate) ?>" required>
             </div>
             
             <div class="col-md-6 d-flex align-items-end justify-content-end gap-2">
-                <button type="button" class="btn btn-secondary" onclick="resetFilters()">
-                    <i class="bi bi-arrow-counterclockwise"></i> Reset
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-search"></i> Generate Report
                 </button>
                 <button type="button" class="btn btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#advancedFilters">
                     <i class="bi bi-funnel"></i> Advanced Filters
@@ -127,7 +107,7 @@ $grandTotal = [
                     <div class="row g-3">
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Business Unit</label>
-                            <select name="business_unit" id="business_unit" class="form-select">
+                            <select name="business_unit" class="form-select">
                                 <option value="">All Units</option>
                                 <?php foreach ($businessUnits as $unit): ?>
                                     <option value="<?= htmlspecialchars($unit) ?>" <?= $filterBusinessUnit === $unit ? 'selected' : '' ?>>
@@ -138,7 +118,7 @@ $grandTotal = [
                         </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Role</label>
-                            <select name="role" id="role" class="form-select">
+                            <select name="role" class="form-select">
                                 <option value="">All Roles</option>
                                 <?php foreach ($roles as $role): ?>
                                     <option value="<?= htmlspecialchars($role) ?>" <?= $filterRole === $role ? 'selected' : '' ?>>
@@ -149,7 +129,7 @@ $grandTotal = [
                         </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Shift Number</label>
-                            <select name="shift" id="shift" class="form-select">
+                            <select name="shift" class="form-select">
                                 <option value="">All Shifts</option>
                                 <?php foreach ($shifts as $shift): ?>
                                     <option value="<?= htmlspecialchars($shift) ?>" <?= $filterShift == $shift ? 'selected' : '' ?>>
@@ -160,7 +140,7 @@ $grandTotal = [
                         </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Remarks</label>
-                            <select name="remarks" id="remarks" class="form-select">
+                            <select name="remarks" class="form-select">
                                 <option value="">All Remarks</option>
                                 <?php foreach ($remarksList as $remark): ?>
                                     <option value="<?= htmlspecialchars($remark) ?>" <?= $filterRemarks === $remark ? 'selected' : '' ?>>
@@ -175,7 +155,7 @@ $grandTotal = [
         </form>
         <p class="text-muted mt-3 mb-0">
             <strong>Report Period:</strong> <?= date('F d, Y', strtotime($startDate)) ?> to <?= date('F d, Y', strtotime($endDate)) ?>
-            <span class="ms-3"><strong>Employee Records Shown:</strong> <?= count($employees) ?></span>
+            <span class="ms-3"><strong>Employees:</strong> <?= count($employees) ?></span>
             <?php if ($filterBusinessUnit || $filterRole || $filterShift || $filterRemarks): ?>
                 <span class="ms-3 badge bg-info">Filters Applied</span>
             <?php endif; ?>
@@ -210,9 +190,6 @@ $grandTotal = [
             <table class="table table-hover align-middle" id="salaryTable">
                 <thead class="table-light">
                     <tr>
-                        <th width="50">
-                            <input type="checkbox" id="selectAll" class="form-check-input" onchange="toggleSelectAll(this)">
-                        </th>
                         <th>Employee</th>
                         <th>Business Unit</th>
                         <th class="text-end">Regular Pay</th>
@@ -230,11 +207,6 @@ $grandTotal = [
                 <tbody>
                     <?php foreach ($employees as $emp): ?>
                     <tr>
-                        <td>
-                            <input type="checkbox" class="form-check-input employee-checkbox" 
-                                   data-name="<?= htmlspecialchars($emp['name']) ?>" 
-                                   onchange="updateSelectedCount()">
-                        </td>
                         <td><strong><?= htmlspecialchars($emp['name']) ?></strong></td>
                         <td><?= htmlspecialchars($emp['business_unit']) ?></td>
                         <td class="text-end">₱<?= number_format($emp['totals']['regular'], 2) ?></td>
@@ -251,13 +223,16 @@ $grandTotal = [
                                class="btn btn-sm btn-outline-primary" title="View Detailed Payslip">
                                 <i class="bi bi-file-text"></i>
                             </a>
+                            <a href="payslip_pdf.php?name=<?= urlencode($emp['name']) ?>&start=<?= $startDate ?>&end=<?= $endDate ?>" 
+                               class="btn btn-sm btn-outline-danger" title="Download PDF" target="_blank">
+                                <i class="bi bi-file-pdf"></i>
+                            </a>
                         </td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
                 <tfoot class="table-light fw-bold">
                     <tr>
-                        <td></td>
                         <td colspan="8" class="text-end">TOTAL:</td>
                         <td class="text-end text-success">₱<?= number_format($grandTotal['gross'], 2) ?></td>
                         <td class="text-end text-danger">₱<?= number_format($grandTotal['deductions'], 2) ?></td>
@@ -270,72 +245,16 @@ $grandTotal = [
     </div>
 </div>
 
+<style>
+@media print {
+    .sidebar, .btn, form { display: none !important; }
+    .main-content { margin-left: 0 !important; }
+}
+</style>
+
 <script>
-// Auto-submit form on filter change
-document.addEventListener('DOMContentLoaded', function() {
-    const filterInputs = ['start_date', 'end_date', 'sort', 'business_unit', 'role', 'shift', 'remarks'];
-    
-    filterInputs.forEach(inputId => {
-        const element = document.getElementById(inputId);
-        if (element) {
-            element.addEventListener('change', function() {
-                document.getElementById('filterForm').submit();
-            });
-        }
-    });
-});
-
-// Reset filters
-function resetFilters() {
-    window.location.href = window.location.pathname;
-}
-
-// Toggle select all checkboxes
-function toggleSelectAll(checkbox) {
-    const employeeCheckboxes = document.querySelectorAll('.employee-checkbox');
-    employeeCheckboxes.forEach(cb => {
-        cb.checked = checkbox.checked;
-    });
-    updateSelectedCount();
-}
-
-// Update selected count and enable/disable download button
-function updateSelectedCount() {
-    const selectedCheckboxes = document.querySelectorAll('.employee-checkbox:checked');
-    const count = selectedCheckboxes.length;
-    document.getElementById('selectedCount').textContent = count;
-    document.getElementById('downloadSelectedPDFs').disabled = count === 0;
-    
-    // Update "select all" checkbox state
-    const allCheckboxes = document.querySelectorAll('.employee-checkbox');
-    const selectAllCheckbox = document.getElementById('selectAll');
-    selectAllCheckbox.checked = count === allCheckboxes.length && count > 0;
-    selectAllCheckbox.indeterminate = count > 0 && count < allCheckboxes.length;
-}
-
-// Download selected PDFs
-function downloadSelectedPDFs() {
-    const selectedCheckboxes = document.querySelectorAll('.employee-checkbox:checked');
-    if (selectedCheckboxes.length === 0) {
-        alert('Please select at least one employee.');
-        return;
-    }
-    
-    const startDate = document.getElementById('start_date').value;
-    const endDate = document.getElementById('end_date').value;
-    
-    // Download each PDF with a small delay to prevent browser blocking
-    selectedCheckboxes.forEach((checkbox, index) => {
-        setTimeout(() => {
-            const employeeName = checkbox.dataset.name;
-            const url = `payslip_pdf.php?name=${encodeURIComponent(employeeName)}&start=${startDate}&end=${endDate}`;
-            window.open(url, '_blank');
-        }, index * 500); // 500ms delay between each download
-    });
-}
-
-// Excel export function
 function exportToExcel() {
+    // Simple CSV export
     const table = document.getElementById('salaryTable');
     let csv = [];
     const rows = table.querySelectorAll('tr');
@@ -344,14 +263,11 @@ function exportToExcel() {
         const cols = row.querySelectorAll('td, th');
         let csvRow = [];
         for (let col of cols) {
-            // Skip checkbox column (first) and action column (last)
-            if (col.cellIndex !== 0 && col.cellIndex !== cols.length - 1) {
+            if (col.cellIndex !== cols.length - 1) { // Skip action column
                 csvRow.push('"' + col.innerText.replace(/"/g, '""') + '"');
             }
         }
-        if (csvRow.length > 0) {
-            csv.push(csvRow.join(','));
-        }
+        csv.push(csvRow.join(','));
     }
     
     const csvContent = csv.join('\n');
@@ -363,11 +279,3 @@ function exportToExcel() {
     a.click();
 }
 </script>
-
-<style>
-.form-check-input:indeterminate {
-    background-color: #0d6efd;
-    border-color: #0d6efd;
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10h8'/%3e%3c/svg%3e");
-}
-</style>

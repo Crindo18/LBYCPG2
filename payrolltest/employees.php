@@ -53,10 +53,32 @@ $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
             </div>
         </div>
 
-        <p class="text-muted mt-4 mb-0 small" id="resultCount"><?= count($employees) ?> employees found.</p>
+        <div class="d-flex justify-content-between align-items-center mt-4">
+            <p class="text-muted mb-0 small" id="resultCount"><?= count($employees) ?> employees found.</p>
+            <button id="deleteSelected" class="btn btn-danger" disabled style="opacity: 0.5; cursor: not-allowed;">
+                <i class="bi bi-trash"></i> Delete Selected (<span id="selectedCount">0</span>)
+            </button>
+        </div>
     </div>
 
     <div class="card-panel p-4 shadow-sm">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <label class="form-label fw-semibold text-secondary me-2">Show</label>
+                <select id="recordsPerPage" class="form-select d-inline-block" style="width: auto;">
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="all">All</option>
+                </select>
+                <span class="text-muted ms-2">entries</span>
+            </div>
+            <div>
+                <span class="text-muted small" id="pageInfo">Showing 0 to 0 of 0 entries</span>
+            </div>
+        </div>
+        
         <div class="table-responsive">
             <table class="table table-hover align-middle" id="employeeTable">
                 <thead class="table-light">
@@ -83,9 +105,12 @@ $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 </tbody>
             </table>
         </div>
-        <button id="deleteSelected" class="btn btn-danger mt-3">
-            <i class="bi bi-trash"></i> Delete Selected
-        </button>
+        
+        <div class="d-flex justify-content-center mt-3">
+            <nav>
+                <ul class="pagination" id="pagination"></ul>
+            </nav>
+        </div>
     </div>
 </div>
 
@@ -137,6 +162,14 @@ const tbody = document.querySelector('#employeeTable tbody');
 const resultCount = document.getElementById('resultCount');
 const employeeForm = document.getElementById('employeeForm');
 const selectAll = document.getElementById('selectAll');
+const deleteSelectedBtn = document.getElementById('deleteSelected');
+const selectedCountSpan = document.getElementById('selectedCount');
+const recordsPerPageSelect = document.getElementById('recordsPerPage');
+const pageInfo = document.getElementById('pageInfo');
+const pagination = document.getElementById('pagination');
+
+let currentPage = 1;
+let filteredRows = [];
 
 // Add another employee row
 document.getElementById('add-employee-row').addEventListener('click', () => {
@@ -156,7 +189,7 @@ function filterTable() {
         const name = row.cells[1].innerText.toLowerCase();
         const unit = row.cells[2].innerText.toLowerCase();
         const match = (!nameVal || name.includes(nameVal)) && (!unitVal || unit === unitVal);
-        row.style.display = match ? '' : 'none';
+        row.dataset.visible = match ? 'true' : 'false';
     });
 
     rows.sort((a, b) => {
@@ -166,9 +199,143 @@ function filterTable() {
     });
     rows.forEach(r => tbody.appendChild(r));
 
-    const visible = rows.filter(r => r.style.display !== 'none').length;
+    filteredRows = rows.filter(r => r.dataset.visible === 'true');
+    const visible = filteredRows.length;
     resultCount.textContent = `${visible} employee${visible!==1?'s':''} found.`;
+    
+    currentPage = 1;
+    displayPage();
 }
+
+function displayPage() {
+    const recordsPerPage = recordsPerPageSelect.value;
+    const showAll = recordsPerPage === 'all';
+    const perPage = showAll ? filteredRows.length : parseInt(recordsPerPage);
+    
+    const totalRecords = filteredRows.length;
+    const totalPages = showAll ? 1 : Math.ceil(totalRecords / perPage);
+    
+    if (currentPage > totalPages) currentPage = totalPages || 1;
+    
+    const startIndex = showAll ? 0 : (currentPage - 1) * perPage;
+    const endIndex = showAll ? totalRecords : startIndex + perPage;
+    
+    // Hide all rows first
+    Array.from(tbody.rows).forEach(row => row.style.display = 'none');
+    
+    // Show only current page rows
+    filteredRows.forEach((row, index) => {
+        row.style.display = (index >= startIndex && index < endIndex) ? '' : 'none';
+    });
+    
+    // Update page info
+    const showing = totalRecords === 0 ? 0 : startIndex + 1;
+    const to = Math.min(endIndex, totalRecords);
+    pageInfo.textContent = `Showing ${showing} to ${to} of ${totalRecords} entries`;
+    
+    // Update pagination
+    renderPagination(totalPages, showAll);
+    
+    // Update select all checkbox
+    selectAll.checked = false;
+    updateDeleteButton();
+}
+
+function renderPagination(totalPages, showAll) {
+    pagination.innerHTML = '';
+    
+    if (showAll || totalPages <= 1) return;
+    
+    // Previous button
+    const prevLi = document.createElement('li');
+    prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+    prevLi.innerHTML = `<a class="page-link" href="#">Previous</a>`;
+    if (currentPage > 1) {
+        prevLi.onclick = (e) => { e.preventDefault(); currentPage--; displayPage(); };
+    }
+    pagination.appendChild(prevLi);
+    
+    // Page numbers
+    const maxVisible = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+    
+    if (endPage - startPage < maxVisible - 1) {
+        startPage = Math.max(1, endPage - maxVisible + 1);
+    }
+    
+    if (startPage > 1) {
+        const firstLi = document.createElement('li');
+        firstLi.className = 'page-item';
+        firstLi.innerHTML = `<a class="page-link" href="#">1</a>`;
+        firstLi.onclick = (e) => { e.preventDefault(); currentPage = 1; displayPage(); };
+        pagination.appendChild(firstLi);
+        
+        if (startPage > 2) {
+            const dots = document.createElement('li');
+            dots.className = 'page-item disabled';
+            dots.innerHTML = `<span class="page-link">...</span>`;
+            pagination.appendChild(dots);
+        }
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        const li = document.createElement('li');
+        li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+        li.innerHTML = `<a class="page-link" href="#">${i}</a>`;
+        if (i !== currentPage) {
+            li.onclick = (e) => { e.preventDefault(); currentPage = i; displayPage(); };
+        }
+        pagination.appendChild(li);
+    }
+    
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            const dots = document.createElement('li');
+            dots.className = 'page-item disabled';
+            dots.innerHTML = `<span class="page-link">...</span>`;
+            pagination.appendChild(dots);
+        }
+        
+        const lastLi = document.createElement('li');
+        lastLi.className = 'page-item';
+        lastLi.innerHTML = `<a class="page-link" href="#">${totalPages}</a>`;
+        lastLi.onclick = (e) => { e.preventDefault(); currentPage = totalPages; displayPage(); };
+        pagination.appendChild(lastLi);
+    }
+    
+    // Next button
+    const nextLi = document.createElement('li');
+    nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+    nextLi.innerHTML = `<a class="page-link" href="#">Next</a>`;
+    if (currentPage < totalPages) {
+        nextLi.onclick = (e) => { e.preventDefault(); currentPage++; displayPage(); };
+    }
+    pagination.appendChild(nextLi);
+}
+
+function updateDeleteButton() {
+    const visibleChecked = Array.from(document.querySelectorAll('.rowCheck:checked')).filter(
+        chk => chk.closest('tr').style.display !== 'none'
+    );
+    const count = visibleChecked.length;
+    selectedCountSpan.textContent = count;
+    
+    if (count > 0) {
+        deleteSelectedBtn.disabled = false;
+        deleteSelectedBtn.style.opacity = '1';
+        deleteSelectedBtn.style.cursor = 'pointer';
+    } else {
+        deleteSelectedBtn.disabled = true;
+        deleteSelectedBtn.style.opacity = '0.5';
+        deleteSelectedBtn.style.cursor = 'not-allowed';
+    }
+}
+
+recordsPerPageSelect.addEventListener('change', () => {
+    currentPage = 1;
+    displayPage();
+});
 
 resetBtn.addEventListener('click', () => {
     searchName.value = '';
@@ -182,7 +349,6 @@ document.getElementById('addBtn').addEventListener('click', () => {
     employeeForm.reset();
     document.getElementById('employeeID').value = '';
     document.querySelector('#employeeModal .modal-title').innerText = 'Add Employee(s)';
-    // Keep only one employee row when opening the modal
     const employeeFields = document.getElementById('employee-fields');
     while (employeeFields.children.length > 1) {
       employeeFields.removeChild(employeeFields.lastChild);
@@ -199,7 +365,6 @@ document.querySelectorAll('.editBtn').forEach(btn => {
                 if (data.success && data.data) {
                     const d = data.data;
                     document.getElementById('employeeID').value = d.ID || '';
-                    // Since we are editing, we only need one set of fields
                     const employeeFields = document.getElementById('employee-fields');
                     while (employeeFields.children.length > 1) {
                       employeeFields.removeChild(employeeFields.lastChild);
@@ -229,13 +394,25 @@ employeeForm.addEventListener('submit', e => {
         .catch(() => alert('Server error'));
 });
 
-// Select all checkboxes
+// Select all checkboxes (only visible ones on current page)
 selectAll.addEventListener('change', () => {
-    document.querySelectorAll('.rowCheck').forEach(chk => chk.checked = selectAll.checked);
+    document.querySelectorAll('.rowCheck').forEach(chk => {
+        if (chk.closest('tr').style.display !== 'none') {
+            chk.checked = selectAll.checked;
+        }
+    });
+    updateDeleteButton();
+});
+
+// Update delete button when individual checkboxes change
+tbody.addEventListener('change', (e) => {
+    if (e.target.classList.contains('rowCheck')) {
+        updateDeleteButton();
+    }
 });
 
 // Delete selected
-document.getElementById('deleteSelected').addEventListener('click', () => {
+deleteSelectedBtn.addEventListener('click', () => {
     const ids = Array.from(document.querySelectorAll('.rowCheck:checked')).map(c => c.value);
     if (ids.length === 0) return alert('Please select at least one employee.');
     if (!confirm(`Delete ${ids.length} selected employee${ids.length>1?'s':''}?`)) return;
@@ -255,4 +432,5 @@ document.getElementById('deleteSelected').addEventListener('click', () => {
 
 [searchName, filterUnit, sortOrder].forEach(el => el.addEventListener('input', filterTable));
 filterTable();
+updateDeleteButton();
 </script>

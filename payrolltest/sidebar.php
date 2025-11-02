@@ -34,26 +34,20 @@
             </li>
 
             <li class="nav-item">
-                <a href="batch_upload.php" class="nav-link">
-                    <i class="bi bi-file-earmark-excel"></i> Batch Upload
-                </a>
-            </li>
-
-            <li class="nav-item">
                 <a href="salary_summary.php" class="nav-link">
-                    <i class="bi bi-cash-stack"></i> Salary Summary
-                </a>
-            </li>
-
-            <li class="nav-item">
-                <a href="employee_payslip_portal.php" class="nav-link">
-                    <i class="bi bi-person-badge"></i> Employee Payslips
+                    <i class="bi bi-cash-stack"></i> Payroll
                 </a>
             </li>
 
             <li class="nav-item">
                 <a href="batch_email.php" class="nav-link">
-                    <i class="bi bi-envelope"></i> Batch Email
+                    <i class="bi bi-envelope"></i> Email Payslips
+                </a>
+            </li>
+
+            <li class="nav-item">
+                <a href="batch_upload.php" class="nav-link">
+                    <i class="bi bi-file-earmark-excel"></i> Batch Upload
                 </a>
             </li>
 
