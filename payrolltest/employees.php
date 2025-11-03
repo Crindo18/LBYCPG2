@@ -43,6 +43,9 @@ $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <select id="sortOrder" class="form-select">
                     <option value="recent_desc">Most Recent</option>
                     <option value="recent_asc">Oldest</option>
+                    <option value="name_asc">Name (A-Z)</option>
+                    <option value="name_desc">Name (Z-A)</option>
+                    <option value="multiple_units">Multiple Business Units</option>
                 </select>
             </div>
 
@@ -233,16 +236,37 @@ function filterTable() {
         row.dataset.visible = match ? 'true' : 'false';
     });
 
+    // Sort rows
     rows.sort((a, b) => {
-        const ida = parseInt(a.dataset.id || '0', 10);
-        const idb = parseInt(b.dataset.id || '0', 10);
-        return orderVal === 'recent_asc' ? ida - idb : idb - ida;
+        if (orderVal === 'name_asc' || orderVal === 'name_desc') {
+            const nameA = a.cells[1].innerText.toLowerCase();
+            const nameB = b.cells[1].innerText.toLowerCase();
+            return orderVal === 'name_asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+        } else if (orderVal === 'multiple_units') {
+            const nameA = a.cells[1].innerText;
+            const nameB = b.cells[1].innerText;
+            const countA = rows.filter(r => r.cells[1].innerText === nameA).length;
+            const countB = rows.filter(r => r.cells[1].innerText === nameB).length;
+            return countB - countA; // Higher count first
+        } else {
+            const ida = parseInt(a.dataset.id || '0', 10);
+            const idb = parseInt(b.dataset.id || '0', 10);
+            return orderVal === 'recent_asc' ? ida - idb : idb - ida;
+        }
     });
     rows.forEach(r => tbody.appendChild(r));
 
     filteredRows = rows.filter(r => r.dataset.visible === 'true');
-    const visible = filteredRows.length;
-    resultCount.textContent = `${visible} employee${visible!==1?'s':''} found.`;
+    
+    // Count unique employee names
+    const uniqueNames = new Set();
+    filteredRows.forEach(row => {
+        uniqueNames.add(row.cells[1].innerText);
+    });
+    const uniqueCount = uniqueNames.size;
+    
+    const employeeText = uniqueCount === 1 ? 'employee' : 'employees';
+    resultCount.textContent = `${uniqueCount} ${employeeText} found.`;
     
     currentPage = 1;
     displayPage();

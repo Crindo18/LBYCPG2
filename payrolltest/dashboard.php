@@ -37,7 +37,7 @@ $avgTimes = $avgQuery->fetch();
 $avgIn  = $avgTimes['avg_in'] ?? '--:--';
 $avgOut = $avgTimes['avg_out'] ?? '--:--';
 
-// --- Database Statistics ---
+// --- Database Statistics (Count unique names, matching employees.php logic) ---
 $stats = $pdo->query("
     SELECT 
         COUNT(DISTINCT Name) as total_employees,
@@ -45,7 +45,7 @@ $stats = $pdo->query("
         MIN(Date) as earliest_date,
         MAX(Date) as latest_date
     FROM payrolldata
-    WHERE Date IS NOT NULL
+    WHERE Date IS NOT NULL AND Name IS NOT NULL
 ")->fetch();
 
 // --- Current Month Payroll Summary ---

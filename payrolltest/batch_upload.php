@@ -172,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
             <div class="card-panel p-3 mt-3 text-center shadow-sm">
                 <h6 class="mb-3">Quick Actions</h6>
                 <a href="salary_summary.php" class="btn btn-outline-primary w-100 mb-2">
-                    <i class="bi bi-calculator"></i> View Salary Summary
+                    <i class="bi bi-cash-stack"></i> View Payroll
                 </a>
                 <a href="timetracking.php" class="btn btn-outline-secondary w-100 mb-2">
                     <i class="bi bi-clock-history"></i> View Time Records

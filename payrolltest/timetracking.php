@@ -274,7 +274,8 @@ function filterTable() {
   
   filteredRows = rows.filter(r => r.dataset.visible === 'true');
   const visible = filteredRows.length;
-  resultCount.textContent = `${visible} record${visible !== 1 ? 's' : ''} found.`;
+  const recordText = visible === 1 ? 'record' : 'records';
+  resultCount.textContent = `${visible} ${recordText} found.`;
   
   currentPage = 1;
   displayPage();
