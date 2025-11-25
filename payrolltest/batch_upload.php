@@ -1,4 +1,5 @@
 <?php
+// Batch Upload - Syncs employee data, holidays, and time records from Excel
 require_once 'dbconfig.php';
 include 'sidebar.php';
 require __DIR__ . '/vendor/autoload.php';
@@ -9,11 +10,12 @@ use PhpOffice\PhpSpreadsheet\Shared\Date;
 $uploadMessage = '';
 $uploadType = '';
 
-// Check requirements before processing
+// Check required PHP extensions
 $missingExtensions = [];
 if (!extension_loaded('zip')) $missingExtensions[] = 'php_zip';
 if (!extension_loaded('gd') && !function_exists('imagecreate')) $missingExtensions[] = 'php_gd';
 
+// Process Excel upload when form is submitted
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
     if (!empty($missingExtensions)) {
         $uploadMessage = "Server Error: The following PHP extensions are required but disabled in php.ini: " . implode(', ', $missingExtensions);
@@ -22,17 +24,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
         $file = $_FILES['excel_file']['tmp_name'];
         
         try {
-            // Identify file type
+            // Load Excel file
             $inputFileType = IOFactory::identify($file);
             $reader = IOFactory::createReader($inputFileType);
             $reader->setReadDataOnly(true);
             $spreadsheet = $reader->load($file);
             
-            // ---------------------------------------------------------
-            // 1. ENSURE AUXILIARY TABLES EXIST (Run BEFORE Transaction)
-            // ---------------------------------------------------------
-            // DDL statements like CREATE TABLE cause an implicit commit in MySQL,
-            // so we must run them before starting our transaction.
+            // Create tables before transaction (DDL causes implicit commit)
             $pdo->exec("CREATE TABLE IF NOT EXISTS employees (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 name VARCHAR(100) UNIQUE NOT NULL,
@@ -52,16 +50,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                 rate_multiplier DECIMAL(5,2) DEFAULT 1.00
             )");
 
-            // ---------------------------------------------------------
-            // 2. START TRANSACTION
-            // ---------------------------------------------------------
             $pdo->beginTransaction();
 
-            // --- Process 'Employees' TAB (Holidays + Employee Data) ---
+            // Process 'Employees' sheet (cols A-C: holidays, F-M: employee data)
             $empSheet = $spreadsheet->getSheetByName('Employees');
             if ($empSheet) {
                 $rows = $empSheet->toArray(null, true, true, true);
                 
+                // Prepare upsert statements
                 $stmtEmp = $pdo->prepare("
                     INSERT INTO employees (name, business_unit, daily_rate, sss, phic, hdmf, govt_loan, email)
                     VALUES (:name, :bu, :rate, :sss, :phic, :hdmf, :loan, :email)
@@ -83,16 +79,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                         rate_multiplier = VALUES(rate_multiplier)
                 ");
 
-                // Start loop at row 2
+                // Loop through rows (skip header)
                 for ($i = 2; $i <= count($rows); $i++) {
                     $row = $rows[$i];
 
-                    // A. Parse Holidays (Cols A, B, C)
+                    // Parse holiday data from columns A-C
                     $holDateRaw = $row['A'] ?? null;
                     if ($holDateRaw) {
                         try {
                             $holDate = is_numeric($holDateRaw) 
-                                ? Date::excelToDateTimeObject($holDateRaw)->format('Y-m-d') 
+                                ? Date::excelToDateTimeObject($holDateRaw)->format('Y-m-d')
                                 : date('Y-m-d', strtotime($holDateRaw));
                             
                             $holRate = floatval($row['C'] ?? 0);
@@ -106,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                         } catch (Exception $e) {}
                     }
 
-                    // B. Parse Employees (Cols F to M)
+                    // Parse employee data from columns F-M
                     $empName = trim($row['F'] ?? '');
                     if ($empName && $empName !== 'Name' && stripos($empName, 'Employees') === false) {
                         $stmtEmp->execute([
@@ -123,7 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                 }
             }
 
-            // --- Process 'TimeSheet' TAB ---
+            // Process 'TimeSheet' sheet (dynamically maps columns by header text)
             $tsSheet = $spreadsheet->getSheetByName('TimeSheet');
             if (!$tsSheet) {
                 $tsSheet = $spreadsheet->getActiveSheet();
@@ -132,7 +128,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
             $rows = $tsSheet->toArray(null, true, true, true);
             $header = $rows[1];
             
-            // Dynamic Column Mapping
             $colMap = [];
             foreach ($header as $col => $txt) {
                 $h = strtolower(trim($txt ?? ''));
@@ -154,6 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             
+            // Import time records
             $importedTS = 0;
             for ($i = 2; $i <= count($rows); $i++) {
                 $row = $rows[$i];
@@ -162,12 +158,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                 
                 if (empty($dateRaw) || empty($name)) continue;
                 
+                // Convert Excel date
                 try {
                     $date = is_numeric($dateRaw) 
                         ? Date::excelToDateTimeObject($dateRaw)->format('Y-m-d') 
                         : date('Y-m-d', strtotime($dateRaw));
                 } catch (Exception $e) { continue; }
                 
+                // Parse time values
                 $timeIn = null; $timeOut = null;
                 if (!empty($row[$colMap['TimeIn'] ?? ''])) {
                     $val = $row[$colMap['TimeIn']];
@@ -178,7 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                     $timeOut = is_numeric($val) ? Date::excelToDateTimeObject($val)->format('H:i:s') : date('H:i:s', strtotime($val));
                 }
 
-                // Handle Deductions (Convert positive Excel value to negative DB value)
+                // Convert deductions to negative
                 $deduction = floatval($row[$colMap['Deductions'] ?? ''] ?? 0);
                 if ($deduction > 0) $deduction = -$deduction;
 
@@ -198,12 +196,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
                 $importedTS++;
             }
             
+            // Commit changes
             $pdo->commit();
             $uploadMessage = "<strong>Success!</strong> Database Synced.<br>• TimeSheet Records: $importedTS<br>• Employee Data Updated from 'Employees' tab.<br>• Holiday Calendar Updated.";
             $uploadType = 'success';
             
         } catch (Exception $e) {
-            // Check if transaction is active before rolling back
+            // Rollback on error
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
@@ -292,6 +291,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
 </div>
 
 <script>
+// Prevent double-submission
 document.getElementById('uploadForm').addEventListener('submit', function() {
     const btn = this.querySelector('button[type="submit"]');
     btn.disabled = true;

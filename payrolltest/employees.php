@@ -1,8 +1,9 @@
 <?php
+// Employees - Manage employee records and employment status
 require_once 'dbconfig.php';
 include 'sidebar.php';
 
-// Fetch employee data grouped by Name; include LatestID for sorting
+// Fetch employee data grouped by name with latest ID for sorting
 $stmt = $pdo->query("
     SELECT Name, BusinessUnit, MAX(ID) AS LatestID
     FROM payrolldata

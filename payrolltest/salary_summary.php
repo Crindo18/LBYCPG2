@@ -1,3 +1,4 @@
+// Salary Summary - Payroll overview with filters and export options
 <?php
 require_once 'dbconfig.php';
 require_once 'calculate_rates.php';
@@ -7,26 +8,26 @@ include 'sidebar.php';
 $startDate = $_GET['start_date'] ?? date('Y-m-01');
 $endDate = $_GET['end_date'] ?? date('Y-m-t');
 
-// Get filter parameters
+// Get filter parameters from query string
 $filterBusinessUnit = $_GET['business_unit'] ?? '';
 $filterRole = $_GET['role'] ?? '';
 $filterShift = $_GET['shift'] ?? '';
 $filterRemarks = $_GET['remarks'] ?? '';
 $sortOrder = $_GET['sort'] ?? '';
 
-// Calculate payroll using your calculate_rates.php function
+// Calculate payroll data for the selected date range
 $payrollData = calculateRates($pdo, $startDate, $endDate);
 $employees = $payrollData['employees'] ?? [];
 
-// Apply filters
+// Filter employees by business unit, role, shift, and remarks if specified
 if ($filterBusinessUnit || $filterRole || $filterShift || $filterRemarks) {
     $employees = array_filter($employees, function($emp) use ($filterBusinessUnit, $filterRole, $filterShift, $filterRemarks, $pdo, $startDate, $endDate) {
-        // Check business unit
+        // Check business unit match
         if ($filterBusinessUnit && $emp['business_unit'] !== $filterBusinessUnit) {
             return false;
         }
         
-        // For role, shift, and remarks - check the actual records
+        // Check role, shift, and remarks by querying actual records
         if ($filterRole || $filterShift || $filterRemarks) {
             $stmt = $pdo->prepare("
                 SELECT * FROM payrolldata 
@@ -54,7 +55,7 @@ if ($filterBusinessUnit || $filterRole || $filterShift || $filterRemarks) {
     });
 }
 
-// Apply sorting
+// Sort employees by net pay if specified
 if ($sortOrder === 'highest') {
     usort($employees, function($a, $b) {
         return $b['totals']['net'] <=> $a['totals']['net'];
@@ -65,13 +66,13 @@ if ($sortOrder === 'highest') {
     });
 }
 
-// Get unique values for dropdowns
+// Fetch unique values for filter dropdowns
 $businessUnits = $pdo->query("SELECT DISTINCT BusinessUnit FROM payrolldata WHERE BusinessUnit IS NOT NULL ORDER BY BusinessUnit")->fetchAll(PDO::FETCH_COLUMN);
 $roles = $pdo->query("SELECT DISTINCT Role FROM payrolldata WHERE Role IS NOT NULL ORDER BY Role")->fetchAll(PDO::FETCH_COLUMN);
 $shifts = $pdo->query("SELECT DISTINCT ShiftNumber FROM payrolldata WHERE ShiftNumber IS NOT NULL ORDER BY ShiftNumber")->fetchAll(PDO::FETCH_COLUMN);
 $remarksList = ['OnDuty', 'Overtime', 'Late'];
 
-// Calculate totals
+// Calculate grand totals for all employees
 $grandTotal = [
     'gross' => array_sum(array_column(array_column($employees, 'totals'), 'gross')),
     'deductions' => array_sum(array_column(array_column($employees, 'totals'), 'total_deductions')),
@@ -271,7 +272,7 @@ $grandTotal = [
 </div>
 
 <script>
-// Auto-submit form on filter change
+// Auto-submit form when any filter changes
 document.addEventListener('DOMContentLoaded', function() {
     const filterInputs = ['start_date', 'end_date', 'sort', 'business_unit', 'role', 'shift', 'remarks'];
     
@@ -285,12 +286,12 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// Reset filters
+// Reset all filters to default
 function resetFilters() {
     window.location.href = window.location.pathname;
 }
 
-// Toggle select all checkboxes
+// Toggle all employee checkboxes
 function toggleSelectAll(checkbox) {
     const employeeCheckboxes = document.querySelectorAll('.employee-checkbox');
     employeeCheckboxes.forEach(cb => {
@@ -299,21 +300,21 @@ function toggleSelectAll(checkbox) {
     updateSelectedCount();
 }
 
-// Update selected count and enable/disable download button
+// Update selected employee count and button state
 function updateSelectedCount() {
     const selectedCheckboxes = document.querySelectorAll('.employee-checkbox:checked');
     const count = selectedCheckboxes.length;
     document.getElementById('selectedCount').textContent = count;
     document.getElementById('downloadSelectedPDFs').disabled = count === 0;
     
-    // Update "select all" checkbox state
+    // Update select all checkbox state with indeterminate support
     const allCheckboxes = document.querySelectorAll('.employee-checkbox');
     const selectAllCheckbox = document.getElementById('selectAll');
     selectAllCheckbox.checked = count === allCheckboxes.length && count > 0;
     selectAllCheckbox.indeterminate = count > 0 && count < allCheckboxes.length;
 }
 
-// Download selected PDFs
+// Download PDF payslips for selected employees
 function downloadSelectedPDFs() {
     const selectedCheckboxes = document.querySelectorAll('.employee-checkbox:checked');
     if (selectedCheckboxes.length === 0) {
@@ -324,27 +325,28 @@ function downloadSelectedPDFs() {
     const startDate = document.getElementById('start_date').value;
     const endDate = document.getElementById('end_date').value;
     
-    // Download each PDF with a small delay to prevent browser blocking
+    // Download each PDF with delay to prevent browser blocking
     selectedCheckboxes.forEach((checkbox, index) => {
         setTimeout(() => {
             const employeeName = checkbox.dataset.name;
             const url = `payslip_pdf.php?name=${encodeURIComponent(employeeName)}&start=${startDate}&end=${endDate}`;
             window.open(url, '_blank');
-        }, index * 500); // 500ms delay between each download
+        }, index * 500);
     });
 }
 
-// Excel export function
+// Export salary table to CSV format
 function exportToExcel() {
     const table = document.getElementById('salaryTable');
     let csv = [];
     const rows = table.querySelectorAll('tr');
     
+    // Build CSV from table rows
     for (let row of rows) {
         const cols = row.querySelectorAll('td, th');
         let csvRow = [];
         for (let col of cols) {
-            // Skip checkbox column (first) and action column (last)
+            // Skip checkbox and action columns
             if (col.cellIndex !== 0 && col.cellIndex !== cols.length - 1) {
                 csvRow.push('"' + col.innerText.replace(/"/g, '""') + '"');
             }
@@ -354,6 +356,7 @@ function exportToExcel() {
         }
     }
     
+    // Download CSV file
     const csvContent = csv.join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);

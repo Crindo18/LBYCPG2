@@ -1,4 +1,5 @@
 <?php
+// Import required dependencies for database, rate calculation, email, and PDF generation
 require_once 'dbconfig.php';
 require_once 'calculate_rates.php';
 require_once '../vendor/autoload.php';
@@ -9,19 +10,21 @@ use PHPMailer\PHPMailer\Exception;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
+// Initialize variables for user feedback messages
 $message = '';
 $messageType = '';
 
-// Get date range
+// Set default date range to current month if not provided
 $startDate = $_GET['start_date'] ?? date('Y-m-01');
 $endDate = $_GET['end_date'] ?? date('Y-m-t');
 
-// Handle email update
+// Handle email update requests - allows updating employee email addresses
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_email'])) {
     $name = $_POST['employee_name'];
     $email = trim($_POST['email']);
     
     try {
+        // Update email in database for the specified employee
         $stmt = $pdo->prepare("UPDATE payrolldata SET Email = ? WHERE Name = ?");
         $stmt->execute([$email, $name]);
         
@@ -33,39 +36,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_email'])) {
     }
 }
 
-// Handle batch sending
+// Handle batch email sending - sends payslips to selected employees
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_batch'])) {
     $selectedEmployees = $_POST['employees'] ?? [];
     $startDate = $_POST['start_date'];
     $endDate = $_POST['end_date'];
     
+    // Validate that at least one employee is selected
     if (empty($selectedEmployees)) {
         $message = "Please select at least one employee.";
         $messageType = 'warning';
     } else {
-        // Check if all selected employees have valid emails
+        // Validate email addresses for all selected employees before sending
         $invalidEmails = [];
         foreach ($selectedEmployees as $empName) {
             $emailStmt = $pdo->prepare("SELECT Email FROM payrolldata WHERE Name = ? LIMIT 1");
             $emailStmt->execute([$empName]);
             $emailRow = $emailStmt->fetch(PDO::FETCH_ASSOC);
             
+            // Check if email exists and is valid format
             if (!$emailRow || empty($emailRow['Email']) || !filter_var($emailRow['Email'], FILTER_VALIDATE_EMAIL)) {
                 $invalidEmails[] = $empName;
             }
         }
         
+        // Stop if any employees have invalid emails
         if (!empty($invalidEmails)) {
             $message = "Cannot send emails. The following employees have invalid or missing email addresses:<br><strong>" . implode(', ', $invalidEmails) . "</strong><br>Please update their email addresses before sending.";
             $messageType = 'danger';
         } else {
+            // Calculate payroll data for the selected period
             $payrollData = calculateRates($pdo, $startDate, $endDate);
             $successCount = 0;
             $failCount = 0;
             $errors = [];
             
+            // Process each selected employee
             foreach ($selectedEmployees as $empName) {
-                // Find employee data
+                // Find employee data in calculated payroll
                 $empData = null;
                 foreach ($payrollData['employees'] as $emp) {
                     if ($emp['name'] === $empName) {
@@ -76,17 +84,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_batch'])) {
                 
                 if (!$empData) continue;
                 
-                // Get email
+                // Retrieve employee's email address
                 $emailStmt = $pdo->prepare("SELECT Email FROM payrolldata WHERE Name = ? LIMIT 1");
                 $emailStmt->execute([$empName]);
                 $emailRow = $emailStmt->fetch(PDO::FETCH_ASSOC);
                 $email = $emailRow['Email'] ?? '';
                 
-                // Generate PDF
+                // Generate PDF payslip and send via email
                 try {
                     $pdf = generatePayslipPDF($empData, $startDate, $endDate);
                     
-                    // Send email
                     if (sendPayslipEmail($email, $empName, $pdf, $startDate, $endDate)) {
                         $successCount++;
                     } else {
@@ -99,6 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_batch'])) {
                 }
             }
             
+            // Prepare summary message
             $message = "Batch sending complete! Success: $successCount, Failed: $failCount";
             $messageType = $failCount > 0 ? 'warning' : 'success';
             
@@ -109,15 +117,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_batch'])) {
     }
 }
 
+/**
+ * Format currency with Philippine Peso symbol
+ * @param float $number Amount to format
+ * @param string $mode 'web' or 'pdf' for different rendering contexts
+ * @return string Formatted currency string
+ */
 function formatCurrency($number, $mode = 'web') {
     $symbol = ($mode === 'pdf') ? '&#8369; ' : '₱';
     return $symbol . number_format($number, 2);
 }
 
+/**
+ * Generate PDF payslip for an employee
+ * @param array $empData Employee payroll data
+ * @param string $startDate Pay period start date
+ * @param string $endDate Pay period end date
+ * @return string PDF content as binary string
+ */
 function generatePayslipPDF($empData, $startDate, $endDate) {
     $totals = $empData['totals'];
     $name = $empData['name'];
     
+    // Build HTML template for PDF with company header and payroll details
     $html = '
     <!DOCTYPE html>
     <html>
@@ -181,6 +203,7 @@ function generatePayslipPDF($empData, $startDate, $endDate) {
     </body>
     </html>';
     
+    // Configure and generate PDF using Dompdf library
     $options = new Options();
     $options->set('isHtml5ParserEnabled', true);
     $options->set('defaultFont', 'Arial');
@@ -193,10 +216,20 @@ function generatePayslipPDF($empData, $startDate, $endDate) {
     return $dompdf->output();
 }
 
+/**
+ * Send payslip email with PDF attachment
+ * @param string $toEmail Recipient email address
+ * @param string $empName Employee name
+ * @param string $pdfContent PDF binary content
+ * @param string $startDate Pay period start date
+ * @param string $endDate Pay period end date
+ * @return bool True if email sent successfully
+ */
 function sendPayslipEmail($toEmail, $empName, $pdfContent, $startDate, $endDate) {
     $mail = new PHPMailer(true);
     
     try {
+        // Configure SMTP settings for Gmail
         $mail->isSMTP();
         $mail->Host = 'smtp.gmail.com';
         $mail->SMTPAuth = true;
@@ -205,9 +238,11 @@ function sendPayslipEmail($toEmail, $empName, $pdfContent, $startDate, $endDate)
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port = 587;
         
+        // Set sender and recipient
         $mail->setFrom('noreply@luambata.com', 'LU Ambata Services');
         $mail->addAddress($toEmail, $empName);
         
+        // Compose email with HTML body
         $mail->isHTML(true);
         $mail->Subject = 'Your Payslip for ' . date('F Y', strtotime($startDate));
         $mail->Body = '
@@ -224,6 +259,7 @@ function sendPayslipEmail($toEmail, $empName, $pdfContent, $startDate, $endDate)
             </html>
         ';
         
+        // Attach PDF payslip
         $filename = 'Payslip_' . str_replace(' ', '_', $empName) . '_' . date('Y-m', strtotime($startDate)) . '.pdf';
         $mail->addStringAttachment($pdfContent, $filename);
         
@@ -235,10 +271,10 @@ function sendPayslipEmail($toEmail, $empName, $pdfContent, $startDate, $endDate)
     }
 }
 
-// Calculate payroll for preview
+// Calculate payroll for preview display
 $payrollData = calculateRates($pdo, $startDate, $endDate);
 
-// Get employees with their emails from payrolldata
+// Fetch all unique employees with their email addresses
 $employeeEmailsQuery = $pdo->query("
     SELECT DISTINCT Name, BusinessUnit, Email
     FROM payrolldata
@@ -260,6 +296,7 @@ $allEmployees = $employeeEmailsQuery->fetchAll(PDO::FETCH_ASSOC);
     </div>
     <?php endif; ?>
 
+    <!-- Date Range Selection Panel -->
     <div class="card-panel p-4 mb-4">
         <h5 class="mb-3">Select Pay Period</h5>
         <form method="GET" class="row g-3">
@@ -279,10 +316,11 @@ $allEmployees = $employeeEmailsQuery->fetchAll(PDO::FETCH_ASSOC);
         </form>
     </div>
 
+    <!-- Employee Selection Panel -->
     <div class="card-panel p-4">
         <h5 class="mb-3">Select Employees to Send Payslips</h5>
         
-        <!-- Search and Filter Section -->
+        <!-- Search and Filter Controls -->
         <div class="row g-3 mb-4">
             <div class="col-md-6">
                 <label class="form-label fw-semibold text-secondary">Search by Name</label>
@@ -309,6 +347,7 @@ $allEmployees = $employeeEmailsQuery->fetchAll(PDO::FETCH_ASSOC);
                 <input type="hidden" name="start_date" value="<?= htmlspecialchars($startDate) ?>">
                 <input type="hidden" name="end_date" value="<?= htmlspecialchars($endDate) ?>">
                 
+                <!-- Select All Checkbox -->
                 <div class="mb-3">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="selectAll">
@@ -318,6 +357,7 @@ $allEmployees = $employeeEmailsQuery->fetchAll(PDO::FETCH_ASSOC);
                     </div>
                 </div>
 
+                <!-- Employee List Table -->
                 <div class="table-responsive">
                     <table class="table table-hover align-middle" id="employeeTable">
                         <thead class="table-light">
@@ -338,7 +378,7 @@ $allEmployees = $employeeEmailsQuery->fetchAll(PDO::FETCH_ASSOC);
                         <tbody id="employeeTableBody">
                             <?php foreach ($allEmployees as $emp): ?>
                                 <?php 
-                                // Find payroll data
+                                // Match employee with their payroll data
                                 $empPayroll = null;
                                 foreach ($payrollData['employees'] as $p) {
                                     if ($p['name'] === $emp['Name']) {
@@ -350,6 +390,7 @@ $allEmployees = $employeeEmailsQuery->fetchAll(PDO::FETCH_ASSOC);
                                 if (!$empPayroll) continue;
                                 $totals = $empPayroll['totals'];
                                 
+                                // Validate email and set status badge
                                 $email = $emp['Email'] ?? '';
                                 $hasValidEmail = !empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL);
                                 $statusClass = $hasValidEmail ? 'bg-success' : 'bg-danger';
@@ -390,6 +431,7 @@ $allEmployees = $employeeEmailsQuery->fetchAll(PDO::FETCH_ASSOC);
                     </table>
                 </div>
 
+                <!-- Send Button and Selection Counter -->
                 <div class="mt-4">
                     <button type="submit" name="send_batch" class="btn btn-primary btn-lg" 
                             onclick="return confirm('Are you sure you want to send payslips to selected employees?')">
@@ -401,6 +443,7 @@ $allEmployees = $employeeEmailsQuery->fetchAll(PDO::FETCH_ASSOC);
         <?php endif; ?>
     </div>
 
+    <!-- Instructions Panel -->
     <div class="card-panel p-4 mt-4">
         <h5 class="mb-3"><i class="bi bi-question-circle"></i> How to Use</h5>
         <ol>
@@ -448,12 +491,15 @@ $allEmployees = $employeeEmailsQuery->fetchAll(PDO::FETCH_ASSOC);
 </div>
 
 <script>
+// Initialize DOM elements for filtering and selection
 const searchInput = document.getElementById('searchEmployeeName');
 const filterSelect = document.getElementById('filterBusinessUnit');
 const tableBody = document.getElementById('employeeTableBody');
 const emailEditModal = new bootstrap.Modal(document.getElementById('emailEditModal'));
 
-// Filter function
+/**
+ * Filter employee table based on search and business unit criteria
+ */
 function filterEmployees() {
     const searchVal = searchInput.value.toLowerCase();
     const unitVal = filterSelect.value.toLowerCase();
@@ -463,6 +509,7 @@ function filterEmployees() {
         const name = (row.dataset.name || '').toLowerCase();
         const unit = (row.dataset.unit || '').toLowerCase();
         
+        // Check if row matches both search and filter criteria
         const nameMatch = !searchVal || name.includes(searchVal);
         const unitMatch = !unitVal || unit === unitVal;
         
@@ -472,13 +519,15 @@ function filterEmployees() {
     updateSelectedCount();
 }
 
+// Attach event listeners for real-time filtering
 searchInput.addEventListener('input', filterEmployees);
 filterSelect.addEventListener('change', filterEmployees);
 
-// Select all functionality
+// Handle "Select All" checkbox functionality
 document.getElementById('selectAll')?.addEventListener('change', function() {
     const checkboxes = document.querySelectorAll('.employee-checkbox');
     checkboxes.forEach(cb => {
+        // Only select visible (non-filtered) rows
         if (cb.closest('tr').style.display !== 'none') {
             cb.checked = this.checked;
         }
@@ -486,6 +535,7 @@ document.getElementById('selectAll')?.addEventListener('change', function() {
     updateSelectedCount();
 });
 
+// Handle table header "Select All" checkbox
 document.getElementById('selectAllTable')?.addEventListener('change', function() {
     const checkboxes = document.querySelectorAll('.employee-checkbox');
     checkboxes.forEach(cb => {
@@ -496,7 +546,9 @@ document.getElementById('selectAllTable')?.addEventListener('change', function()
     updateSelectedCount();
 });
 
-// Update selected count
+/**
+ * Update the selected employee count display
+ */
 function updateSelectedCount() {
     const checked = Array.from(document.querySelectorAll('.employee-checkbox:checked'))
         .filter(cb => cb.closest('tr').style.display !== 'none').length;
@@ -506,12 +558,12 @@ function updateSelectedCount() {
     }
 }
 
-// Add change listeners to all checkboxes
+// Add change listeners to all employee checkboxes
 document.querySelectorAll('.employee-checkbox').forEach(cb => {
     cb.addEventListener('change', updateSelectedCount);
 });
 
-// Edit email functionality
+// Handle email edit button clicks - populate modal with employee data
 document.querySelectorAll('.edit-email-btn').forEach(btn => {
     btn.addEventListener('click', function() {
         const name = this.dataset.name;
@@ -525,5 +577,6 @@ document.querySelectorAll('.edit-email-btn').forEach(btn => {
     });
 });
 
+// Initialize selected count on page load
 updateSelectedCount();
 </script>
