@@ -1,4 +1,4 @@
-// Time Tracking - Manage employee time records with filtering and pagination
+
 <?php
 require_once 'dbconfig.php';
 include 'sidebar.php';

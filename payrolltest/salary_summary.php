@@ -1,4 +1,4 @@
-// Salary Summary - Payroll overview with filters and export options
+
 <?php
 require_once 'dbconfig.php';
 require_once 'calculate_rates.php';
