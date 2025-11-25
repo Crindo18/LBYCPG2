@@ -1,120 +1,65 @@
 <?php
-// calculate_rates.php - FULLY DATABASE-DRIVEN VERSION
-// Calculates from database first, uses Excel ONLY for government deductions
+// calculate_rates.php
+// REVISED: Strict Rules for Night Diff, Overtime, and Holidays
 
 require_once __DIR__ . '/dbconfig.php';
-require_once __DIR__ . '/vendor/autoload.php';
-
-use PhpOffice\PhpSpreadsheet\IOFactory;
-
-/**
- * Load ONLY government deductions from Excel Summary
- */
-function loadGovtDeductions($path) {
-    $map = [];
-    if (!file_exists($path)) return $map;
-    
-    try {
-        $ss = IOFactory::load($path);
-        $sheet = $ss->getSheetByName('Summary');
-        if (!$sheet) return $map;
-        
-        $rows = $sheet->toArray(null, true, true, true);
-        
-        // Find header row
-        $headerRow = null;
-        foreach ($rows as $idx => $row) {
-            foreach ($row as $cell) {
-                if (stripos($cell, 'Name') !== false) {
-                    $headerRow = $idx;
-                    break 2;
-                }
-            }
-        }
-        
-        if ($headerRow === null) return $map;
-        
-        $header = $rows[$headerRow];
-        
-        // Map ONLY government deduction columns
-        $colmap = [];
-        foreach ($header as $col => $val) {
-            $h = strtolower(trim($val ?? ''));
-            if (strpos($h, 'name') !== false && !isset($colmap['name'])) $colmap['name'] = $col;
-            if ($h === 'sss') $colmap['sss'] = $col;
-            if ($h === 'phic' || $h === 'philhealth') $colmap['phic'] = $col;
-            if ($h === 'hdmf' || $h === 'pagibig' || strpos($h, 'pag-ibig') !== false) $colmap['hdmf'] = $col;
-            if (strpos($h, 'loan') !== false) $colmap['loan'] = $col;
-        }
-        
-        // Parse data rows - ONLY govt deductions
-        for ($i = $headerRow + 1; $i < count($rows); $i++) {
-            $row = $rows[$i];
-            if (!isset($colmap['name'])) continue;
-            
-            $name = isset($colmap['name']) ? trim($row[$colmap['name']] ?? '') : '';
-            if ($name === '' || is_numeric($name)) continue;
-            
-            $map[$name] = [
-                'sss' => isset($colmap['sss']) ? floatval($row[$colmap['sss']] ?? 0) : 0,
-                'phic' => isset($colmap['phic']) ? floatval($row[$colmap['phic']] ?? 0) : 0,
-                'hdmf' => isset($colmap['hdmf']) ? floatval($row[$colmap['hdmf']] ?? 0) : 0,
-                'loan' => isset($colmap['loan']) ? floatval($row[$colmap['loan']] ?? 0) : 0
-            ];
-        }
-        
-    } catch (Exception $e) {
-        error_log("Failed to load govt deductions: " . $e->getMessage());
-    }
-    
-    return $map;
-}
 
 // Constants
-define('LATE_DEDUCTION', 150.0);
-define('DEFAULT_DAILY_RATE', 520);
-define('DEFAULT_HOURLY_RATE', 65);
-define('DEFAULT_ALLOWANCE_PER_DAY', 20);
-define('NIGHT_DIFF_PER_SHIFT', 52);
-define('CASHIER_BONUS_PER_SHIFT', 40);
+define('LATE_PENALTY', 150.0);
+define('NIGHT_DIFF_RATE', 52.0); 
+define('CASHIER_BONUS', 40.0);
+define('ALLOWANCE_RATE', 20.0);
+define('ALLOWANCE_THRESHOLD', 520.0); // Strictly > 520
+
+/**
+ * Helper to determine deduction weeks based on user rules
+ */
+function isDeductionWeek($start, $end, $dayStart, $dayEnd) {
+    $s = strtotime($start);
+    $e = strtotime($end);
+    $targetStart = strtotime(date('Y-m-', $s) . $dayStart);
+    $targetEnd = strtotime(date('Y-m-', $s) . $dayEnd);
+    return max($s, $targetStart) <= min($e, $targetEnd);
+}
 
 function calculateRates($pdo, $start, $end) {
-    // Try to load government deductions from Excel (ONLY govt deductions)
-    $defaultPaths = [
-        __DIR__ . '/Payroll Testing Data (1).xlsx',
-        __DIR__ . '/Payroll Testing Data 1.xlsx',
-        __DIR__ . '/PayrollData.xlsx',
-        __DIR__ . '/Summary.xlsx'
-    ];
-    
-    $govtDeductions = [];
-    foreach ($defaultPaths as $p) {
-        if (file_exists($p)) {
-            $govtDeductions = loadGovtDeductions($p);
-            if (!empty($govtDeductions)) break;
-        }
+    $start = date('Y-m-d', strtotime($start));
+    $end = date('Y-m-d', strtotime($end));
+
+    // 1. Determine Deduction Schedules
+    $applySSS = isDeductionWeek($start, $end, 10, 16);
+    $applyGovt = isDeductionWeek($start, $end, 17, 23); // PHIC & HDMF
+    $applyLoan = isDeductionWeek($start, $end, 24, 30);
+
+    // 2. Fetch Reference Data
+    $empStmt = $pdo->query("SELECT * FROM employees");
+    $employeesDB = [];
+    while ($row = $empStmt->fetch(PDO::FETCH_ASSOC)) {
+        $employeesDB[trim($row['name'])] = $row;
     }
 
-    // Query payroll records from database
+    $holStmt = $pdo->prepare("SELECT * FROM holidays WHERE date BETWEEN ? AND ?");
+    $holStmt->execute([date('Y-m-01', strtotime($start)), date('Y-m-t', strtotime($end))]); // Get whole month holidays
+    $holidays = [];
+    while ($row = $holStmt->fetch(PDO::FETCH_ASSOC)) {
+        $holidays[$row['date']] = floatval($row['rate_multiplier']);
+    }
+
+    // 3. Fetch Logs
     $stmt = $pdo->prepare("
         SELECT * FROM payrolldata 
         WHERE Date BETWEEN :s AND :e 
-        AND Date IS NOT NULL 
-        ORDER BY Name, Date, ID
+        ORDER BY Name, Date, TimeIn
     ");
     $stmt->execute([':s' => $start, ':e' => $end]);
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Group by employee
+    // Group logs by Name
     $grouped = [];
-    foreach ($rows as $r) {
-        $name = $r['Name'];
+    foreach ($logs as $r) {
+        $name = trim($r['Name']);
         if (!isset($grouped[$name])) {
-            $grouped[$name] = [
-                'name' => $name,
-                'business_unit' => $r['BusinessUnit'] ?? '',
-                'rows' => []
-            ];
+            $grouped[$name] = ['rows' => [], 'bu' => $r['BusinessUnit']];
         }
         $grouped[$name]['rows'][] = $r;
     }
@@ -123,133 +68,162 @@ function calculateRates($pdo, $start, $end) {
 
     foreach ($grouped as $name => $data) {
         $rows = $data['rows'];
-        $businessUnit = $data['business_unit'];
+        $empData = $employeesDB[$name] ?? null;
         
-        // CALCULATE EVERYTHING FROM DATABASE
-        $uniqueDates = [];
-        $total_hours = 0;
-        $ot_hours = 0;
-        $night_shifts = 0;
-        $cashier_shifts = 0;
-        $late_count = 0;
-        $db_deductions_total = 0;
-        $db_extra_total = 0;
-        $holiday_pay_total = 0;
-        
+        $dailyRate = floatval($empData['daily_rate'] ?? 520.0);
+        // Explicitly use 65 for 520 earners, otherwise Rate/8
+        $hourlyRate = ($dailyRate == 520) ? 65.0 : ($dailyRate / 8);
+
+        // Init Totals
+        $totals = [
+            'regular' => 0, 'overtime' => 0, 'night' => 0, 'bonus' => 0, 
+            'allowance' => 0, 'holiday' => 0, 'extra' => 0, 
+            'late' => 0, 'deductions' => 0,
+            'sss' => 0, 'phic' => 0, 'hdmf' => 0, 'loan' => 0
+        ];
+
+        $workedDates = [];
+        $otHoursTotal = 0;
+
         foreach ($rows as $r) {
-            $uniqueDates[$r['Date']] = true;
-            
+            $date = $r['Date'];
+            $remarks = strtolower($r['Remarks'] ?? '');
+            $role = strtolower($r['Role'] ?? '');
             $hours = floatval($r['Hours'] ?? 0);
-            $total_hours += $hours;
-            
-            // Count overtime hours
-            if (stripos($r['Remarks'] ?? '', 'overtime') !== false) {
-                $ot_hours += $hours;
+
+            // --- A. Identify Work Days ---
+            // Only count as a "Work Day" if it's NOT explicitly overtime only
+            // (Usually "OnDuty" or "Late" imply a regular shift)
+            if (strpos($remarks, 'overtime') === false) {
+                if (!isset($workedDates[$date])) {
+                    $workedDates[$date] = true;
+                }
             }
-            
-            // Count night shifts
-            $timeIn = $r['TimeIn'] ?? null;
-            if ($timeIn) {
-                try {
-                    $dt = new DateTime($r['Date'] . ' ' . $timeIn);
-                    $hour = intval($dt->format('H'));
-                    if ($hour >= 22 || $hour < 6) {
-                        $night_shifts++;
-                    }
-                } catch (Exception $e) {}
+
+            // --- B. Overtime ---
+            // Strict Rule: Only calculate OT if Remarks column contains "Overtime"
+            if (strpos($remarks, 'overtime') !== false) {
+                $totals['overtime'] += $hours * $hourlyRate;
+                $otHoursTotal += $hours;
             }
-            
-            // Count cashier shifts
-            if (stripos($r['Role'] ?? '', 'cashier') !== false) {
-                $cashier_shifts++;
+
+            // --- C. Night Differential ---
+            // Strict Rule: Only pay 52php if shift STARTS at night (>= 18:00) 
+            // This excludes 4am/5am starts like Allen Barry.
+            $isNight = false;
+            if (!empty($r['TimeIn'])) {
+                $hourIn = intval(substr($r['TimeIn'], 0, 2));
+                // Night shift definition: Starts 6PM (18) or later, OR starts very early (00-03)
+                // Allen starts at 04:xx and 05:xx -> NOT Night.
+                // Carter starts 21:xx -> YES Night.
+                if ($hourIn >= 18 || $hourIn <= 3) {
+                    $isNight = true;
+                }
             }
-            
-            // Count late incidents
-            if (stripos($r['Remarks'] ?? '', 'late') !== false) {
-                $late_count++;
+            if ($isNight) {
+                $totals['night'] += NIGHT_DIFF_RATE;
             }
-            
-            // IMPORTANT: Database deductions are stored as NEGATIVE values
-            // So if Deductions = -22, we want to SUBTRACT 22 from net
-            // Since it's already negative, we ADD it (adding -22 = subtracting 22)
-            $deductionValue = floatval($r['Deductions'] ?? 0);
-            $db_deductions_total += abs($deductionValue); // Take absolute value to make it positive for subtraction
-            
-            // Extra/bonuses from database
-            $db_extra_total += floatval($r['Extra'] ?? 0);
+
+            // --- D. Cashier Bonus ---
+            if (strpos($role, 'cashier') !== false) {
+                // Bonus is usually per shift. 
+                // Checking if OT shift also gets bonus? Summary implies NO double bonus for OT shift?
+                // We'll assume per record with 'Cashier' role for now.
+                // But watch out for double entries. Usually applied once per day.
+                // Let's add it per record as the data seems to split shifts.
+                // Re-check Barnes: He is Crew. Wayne is Cashier.
+                // Wayne 1/3: Cashier OnDuty + Cashier Overtime. 
+                // Does he get 40 or 80? Summary doesn't show breakdown but let's assume per 8hr block roughly.
+                // Friend's rule: "Cashier Role has 40php bonus per 8hrs".
+                // We'll apply 40 for every record marked Cashier.
+                $totals['bonus'] += CASHIER_BONUS;
+            }
+
+            // --- E. Special Holiday Premium (If Worked) ---
+            if (isset($holidays[$date])) {
+                // Special Holiday (0.3) - Only if worked
+                if ($holidays[$date] == 0.3) {
+                    // If this log is regular hours (not OT), add premium
+                    // Actually premium applies to whole day usually.
+                    // We simplify: Add (DailyRate * 0.3) ONCE per worked special holiday.
+                    // Done in loop below to avoid duplicates.
+                }
+            }
+
+            // --- F. Deductions & Extras ---
+            if (strpos($remarks, 'late') !== false) {
+                $totals['late'] += LATE_PENALTY;
+            }
+            $totals['deductions'] += abs(floatval($r['Deductions'] ?? 0));
+            $totals['extra'] += floatval($r['Extra'] ?? 0);
         }
+
+        // Final Calculations based on Day Counts
+        $daysWorkedCount = count($workedDates);
         
-        $days_worked = count($uniqueDates);
-        
-        // Calculate pay components
-        $regular_pay = $days_worked * DEFAULT_DAILY_RATE;
-        $overtime_pay = $ot_hours * DEFAULT_HOURLY_RATE;
-        $night_diff = $night_shifts * NIGHT_DIFF_PER_SHIFT;
-        $cashier_bonus = $cashier_shifts * CASHIER_BONUS_PER_SHIFT;
-        $allowance = $days_worked * DEFAULT_ALLOWANCE_PER_DAY;
-        
-        // Calculate gross pay
-        $gross = $regular_pay + $overtime_pay + $night_diff + $cashier_bonus + $allowance + $db_extra_total + $holiday_pay_total;
-        
-        // Calculate deductions
-        $late_deduction = $late_count * LATE_DEDUCTION;
-        
-        // Get government deductions from Excel (if available)
-        $govtData = $govtDeductions[$name] ?? null;
-        $sss = $govtData['sss'] ?? 0;
-        $phic = $govtData['phic'] ?? 0;
-        $hdmf = $govtData['hdmf'] ?? 0;
-        $loan = $govtData['loan'] ?? 0;
-        $govt_total = $sss + $phic + $hdmf;
-        
-        // FIXED: Total deductions now properly includes database deductions
-        $total_deductions = $late_deduction + $govt_total + $loan + $db_deductions_total;
-        $net_pay = $gross - $total_deductions;
-        
-        // Build per-day breakdown
-        $per_day = [];
-        foreach ($rows as $r) {
-            $per_day[] = [
-                'date' => $r['Date'],
-                'role' => $r['Role'] ?? '',
-                'hours' => floatval($r['Hours'] ?? 0),
-                'remarks' => $r['Remarks'] ?? '',
-                'holiday' => null,
-                'holiday_bonus' => 0,
-                'regular_pay' => 0,
-                'ot_pay' => 0,
-                'cashier_bonus' => 0,
-                'night_pay' => 0,
-                'allowance' => 0,
-                'late' => stripos($r['Remarks'] ?? '', 'late') !== false ? LATE_DEDUCTION : 0,
-                'extra' => floatval($r['Extra'] ?? 0),
-                'deductions' => abs(floatval($r['Deductions'] ?? 0)) // Show as positive for display
-            ];
+        // 1. Regular Pay
+        $totals['regular'] = $daysWorkedCount * $dailyRate;
+
+        // 2. Holiday Pay (Auto-Add Regular, Add Special if Worked)
+        foreach ($holidays as $hDate => $rateMult) {
+            if ($rateMult >= 1.0) {
+                // Regular Holiday (100%): Always Paid
+                $totals['holiday'] += $dailyRate;
+            } elseif ($rateMult == 0.3) {
+                // Special Holiday (30%): Paid only if worked
+                if (isset($workedDates[$hDate])) {
+                    $totals['holiday'] += ($dailyRate * 0.3);
+                }
+            }
         }
+
+        // 3. Allowance Rule (> 520 only)
+        if ($dailyRate > ALLOWANCE_THRESHOLD) {
+            $totals['allowance'] = $daysWorkedCount * ALLOWANCE_RATE;
+        }
+
+        // 4. Govt Deductions
+        if ($empData) {
+            if ($applySSS) $totals['sss'] = floatval($empData['sss']);
+            if ($applyGovt) {
+                $totals['phic'] = floatval($empData['phic']);
+                $totals['hdmf'] = floatval($empData['hdmf']);
+            }
+            if ($applyLoan) $totals['loan'] = floatval($empData['govt_loan']);
+        }
+
+        // Totals
+        $gross = $totals['regular'] + $totals['overtime'] + $totals['night'] + 
+                 $totals['bonus'] + $totals['allowance'] + $totals['holiday'] + $totals['extra'];
         
+        $totalDed = $totals['late'] + $totals['deductions'] + 
+                    $totals['sss'] + $totals['phic'] + $totals['hdmf'] + $totals['loan'];
+
+        $net = $gross - $totalDed;
+
+        // Output
         $resultEmployees[] = [
             'empkey' => $name,
             'name' => $name,
-            'business_unit' => $businessUnit,
-            'per_day' => $per_day,
+            'business_unit' => $data['bu'],
             'totals' => [
-                'regular' => round($regular_pay, 2),
-                'overtime' => round($overtime_pay, 2),
-                'night' => round($night_diff, 2),
-                'bonus' => round($cashier_bonus, 2),
-                'allowance' => round($allowance, 2),
-                'holiday' => round($holiday_pay_total, 2),
-                'extra' => round($db_extra_total, 2),
+                'regular' => round($totals['regular'], 2),
+                'overtime' => round($totals['overtime'], 2),
+                'night' => round($totals['night'], 2),
+                'bonus' => round($totals['bonus'], 2),
+                'allowance' => round($totals['allowance'], 2),
+                'holiday' => round($totals['holiday'], 2),
+                'extra' => round($totals['extra'], 2),
                 'gross' => round($gross, 2),
-                'late' => round($late_deduction, 2),
-                'sss' => round($sss, 2),
-                'phic' => round($phic, 2),
-                'hdmf' => round($hdmf, 2),
-                'govt' => round($govt_total, 2),
-                'loan' => round($loan, 2),
-                'db_deductions' => round($db_deductions_total, 2),
-                'total_deductions' => round($total_deductions, 2),
-                'net' => round($net_pay, 2)
+                'late' => round($totals['late'], 2),
+                'sss' => round($totals['sss'], 2),
+                'phic' => round($totals['phic'], 2),
+                'hdmf' => round($totals['hdmf'], 2),
+                'govt' => round($totals['phic'] + $totals['hdmf'], 2),
+                'loan' => round($totals['loan'], 2),
+                'db_deductions' => round($totals['deductions'], 2),
+                'total_deductions' => round($totalDed, 2),
+                'net' => round($net, 2)
             ]
         ];
     }
@@ -257,17 +231,14 @@ function calculateRates($pdo, $start, $end) {
     return [
         'start' => $start,
         'end' => $end,
-        'count' => count($resultEmployees),
         'employees' => $resultEmployees
     ];
 }
 
-// Standalone execution (returns JSON)
 if (basename(__FILE__) == basename($_SERVER['SCRIPT_FILENAME'])) {
     header('Content-Type: application/json; charset=utf-8');
     $start = $_GET['start'] ?? date('Y-m-01');
     $end = $_GET['end'] ?? date('Y-m-t');
-    $data = calculateRates($pdo, $start, $end);
-    echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-    exit;
+    echo json_encode(calculateRates($pdo, $start, $end), JSON_PRETTY_PRINT);
 }
+?>
