@@ -1,17 +1,16 @@
 <?php
+// Dashboard - Overview of payroll statistics and recent activity
 require_once 'dbconfig.php';
 require_once 'calculate_rates.php';
 include 'sidebar.php';
 
-// --- Date range for current week (Monday–Sunday) ---
+// Set date ranges for queries
 $startOfWeek = date('Y-m-d', strtotime('monday this week'));
 $endOfWeek   = date('Y-m-d', strtotime('sunday this week'));
-
-// --- Current month for payroll stats ---
 $startOfMonth = date('Y-m-01');
 $endOfMonth = date('Y-m-t');
 
-// --- Fetch summary counts ---
+// Helper function to count records by remark type
 function fetchCount($pdo, $remark, $start, $end) {
     $stmt = $pdo->prepare("SELECT COUNT(*) AS cnt FROM payrolldata WHERE Remarks = ? AND Date BETWEEN ? AND ?");
     $stmt->execute([$remark, $start, $end]);
@@ -19,11 +18,12 @@ function fetchCount($pdo, $remark, $start, $end) {
     return $row ? $row['cnt'] : 0;
 }
 
+// Fetch weekly summary counts
 $onDuty   = fetchCount($pdo, 'OnDuty', $startOfWeek, $endOfWeek);
 $overtime = fetchCount($pdo, 'Overtime', $startOfWeek, $endOfWeek);
 $late     = fetchCount($pdo, 'Late', $startOfWeek, $endOfWeek);
 
-// --- Average time in/out for the week ---
+// Calculate average time in/out for the week
 $avgQuery = $pdo->prepare("
     SELECT 
         SEC_TO_TIME(AVG(TIME_TO_SEC(TimeIn))) AS avg_in,
@@ -33,11 +33,10 @@ $avgQuery = $pdo->prepare("
 ");
 $avgQuery->execute([$startOfWeek, $endOfWeek]);
 $avgTimes = $avgQuery->fetch();
-
 $avgIn  = $avgTimes['avg_in'] ?? '--:--';
 $avgOut = $avgTimes['avg_out'] ?? '--:--';
 
-// --- Database Statistics (Count unique names, matching employees.php logic) ---
+// Fetch database statistics
 $stats = $pdo->query("
     SELECT 
         COUNT(DISTINCT Name) as total_employees,
@@ -48,14 +47,14 @@ $stats = $pdo->query("
     WHERE Date IS NOT NULL AND Name IS NOT NULL
 ")->fetch();
 
-// --- Current Month Payroll Summary ---
+// Calculate current month payroll summary
 $payrollData = calculateRates($pdo, $startOfMonth, $endOfMonth);
 $employees = $payrollData['employees'] ?? [];
 $monthlyGrossPay = array_sum(array_column(array_column($employees, 'totals'), 'gross'));
 $monthlyNetPay = array_sum(array_column(array_column($employees, 'totals'), 'net'));
 $monthlyDeductions = array_sum(array_column(array_column($employees, 'totals'), 'total_deductions'));
 
-// --- Recent Activities (Last 10 records) ---
+// Fetch recent activities
 $recentStmt = $pdo->query("
     SELECT Name, Date, TimeIn, TimeOut, Remarks, Hours 
     FROM payrolldata 
@@ -65,7 +64,7 @@ $recentStmt = $pdo->query("
 ");
 $recentActivities = $recentStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// --- Business Unit Summary ---
+// Fetch business unit summary for the week
 $businessUnitStmt = $pdo->query("
     SELECT 
         BusinessUnit,
@@ -79,7 +78,7 @@ $businessUnitStmt = $pdo->query("
 ");
 $businessUnits = $businessUnitStmt->fetchAll(PDO::FETCH_ASSOC);
 
-// --- Today's Schedule ---
+// Fetch today's schedule
 $today = date('Y-m-d');
 $todayStmt = $pdo->prepare("
     SELECT Name, BusinessUnit, Role, TimeIn, TimeOut, Remarks

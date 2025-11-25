@@ -1,3 +1,4 @@
+// Reports - Analytics dashboard with charts and payroll statistics
 <?php
 require_once 'dbconfig.php';
 require_once 'calculate_rates.php';
@@ -8,18 +9,18 @@ $startDate = $_GET['start_date'] ?? date('Y-m-01');
 $endDate = $_GET['end_date'] ?? date('Y-m-t');
 $filterBusinessUnit = $_GET['business_unit'] ?? '';
 
-// Get payroll data
+// Calculate payroll data for the selected period
 $payrollData = calculateRates($pdo, $startDate, $endDate);
 $employees = $payrollData['employees'] ?? [];
 
-// Apply business unit filter
+// Filter by business unit if specified
 if ($filterBusinessUnit) {
     $employees = array_filter($employees, function($emp) use ($filterBusinessUnit) {
         return $emp['business_unit'] === $filterBusinessUnit;
     });
 }
 
-// Calculate analytics
+// Calculate summary statistics for dashboard cards
 $totalEmployees = count($employees);
 $totalGrossPay = array_sum(array_column(array_column($employees, 'totals'), 'gross'));
 $totalNetPay = array_sum(array_column(array_column($employees, 'totals'), 'net'));
@@ -27,7 +28,7 @@ $totalDeductions = array_sum(array_column(array_column($employees, 'totals'), 't
 $totalOvertimePay = array_sum(array_column(array_column($employees, 'totals'), 'overtime'));
 $totalLateDeductions = array_sum(array_column(array_column($employees, 'totals'), 'late'));
 
-// Get time tracking stats
+// Query time tracking statistics for the selected period
 $stmt = $pdo->prepare("
     SELECT 
         COUNT(*) as total_records,
@@ -47,7 +48,7 @@ if ($filterBusinessUnit) {
 }
 $timeStats = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// Get business unit breakdown
+// Get business unit breakdown with employee and hours statistics
 $stmt = $pdo->prepare("
     SELECT 
         BusinessUnit,
@@ -63,14 +64,14 @@ $stmt = $pdo->prepare("
 $stmt->execute([$startDate, $endDate]);
 $businessUnitStats = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Get top employees by gross pay
+// Get top 5 employees by gross pay for ranking
 $topEarners = $employees;
 usort($topEarners, function($a, $b) {
     return $b['totals']['gross'] - $a['totals']['gross'];
 });
 $topEarners = array_slice($topEarners, 0, 5);
 
-// Get employees with most late incidents
+// Get top 5 employees with most late incidents
 $lateEmployees = array_filter($employees, function($emp) {
     return $emp['totals']['late'] > 0;
 });
@@ -79,7 +80,7 @@ usort($lateEmployees, function($a, $b) {
 });
 $lateEmployees = array_slice($lateEmployees, 0, 5);
 
-// Get daily attendance data for chart
+// Get daily attendance counts for attendance chart
 $stmt = $pdo->prepare("
     SELECT 
         Date,
@@ -98,7 +99,7 @@ if ($filterBusinessUnit) {
 }
 $dailyAttendance = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Get unique business units for dropdown
+// Fetch unique business units for filter dropdown
 $businessUnits = $pdo->query("SELECT DISTINCT BusinessUnit FROM payrolldata WHERE BusinessUnit IS NOT NULL ORDER BY BusinessUnit")->fetchAll(PDO::FETCH_COLUMN);
 ?>
 
@@ -336,11 +337,12 @@ $businessUnits = $pdo->query("SELECT DISTINCT BusinessUnit FROM payrolldata WHER
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// Daily Attendance Chart
+// Prepare data for daily attendance line chart
 const attendanceCtx = document.getElementById('attendanceChart').getContext('2d');
 const attendanceData = <?= json_encode(array_column($dailyAttendance, 'employee_count')) ?>;
 const attendanceDates = <?= json_encode(array_map(function($d) { return date('M d', strtotime($d['Date'])); }, $dailyAttendance)) ?>;
 
+// Create daily attendance line chart
 new Chart(attendanceCtx, {
     type: 'line',
     data: {
@@ -365,11 +367,12 @@ new Chart(attendanceCtx, {
     }
 });
 
-// Business Unit Pie Chart
+// Prepare data for business unit distribution pie chart
 const businessUnitCtx = document.getElementById('businessUnitChart').getContext('2d');
 const businessUnitData = <?= json_encode(array_column($businessUnitStats, 'employee_count')) ?>;
 const businessUnitLabels = <?= json_encode(array_column($businessUnitStats, 'BusinessUnit')) ?>;
 
+// Create business unit distribution doughnut chart
 new Chart(businessUnitCtx, {
     type: 'doughnut',
     data: {

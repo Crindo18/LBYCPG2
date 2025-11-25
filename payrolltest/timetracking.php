@@ -1,12 +1,13 @@
+// Time Tracking - Manage employee time records with filtering and pagination
 <?php
 require_once 'dbconfig.php';
 include 'sidebar.php';
 
-// Get all time tracking records
+// Fetch all time tracking records ordered by most recent
 $stmt = $pdo->query("SELECT * FROM payrolldata WHERE Date IS NOT NULL AND Date > '0000-00-00' ORDER BY ID DESC");
 $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Get unique employees with their business units
+// Fetch unique employee names with their business units for dropdown
 $empStmt = $pdo->query("
     SELECT DISTINCT Name, BusinessUnit
     FROM payrolldata 
@@ -223,6 +224,7 @@ $employees = $empStmt->fetchAll(PDO::FETCH_ASSOC);
 </div>
 
 <script>
+// Initialize DOM elements and modal
 const tbody = document.getElementById('recordsTbody');
 const recordModalEl = document.getElementById('recordModal');
 const recordModal = new bootstrap.Modal(recordModalEl);
@@ -233,12 +235,14 @@ const recordsPerPageSelect = document.getElementById('recordsPerPage');
 const pageInfo = document.getElementById('pageInfo');
 const pagination = document.getElementById('pagination');
 
+// Track current page and filtered records
 let currentPage = 1;
 let filteredRows = [];
 
+// Helper function to get all table rows as array
 function getRowsArray() { return Array.from(tbody.querySelectorAll('tr')); }
 
-/* Filtering + sorting */
+// Initialize filter elements
 const searchName = document.getElementById('searchName');
 const filterDateFrom = document.getElementById('filterDateFrom');
 const filterDateUntil = document.getElementById('filterDateUntil');
@@ -246,6 +250,7 @@ const sortOrder = document.getElementById('sortOrder');
 const resetBtn = document.getElementById('resetBtn');
 const resultCount = document.getElementById('resultCount');
 
+// Filter and sort table based on search criteria
 function filterTable() {
   const nameVal = (searchName.value || '').toLowerCase();
   const dateFromVal = filterDateFrom.value;
@@ -253,6 +258,7 @@ function filterTable() {
   const order = sortOrder.value;
   let rows = getRowsArray();
   
+  // Apply name and date range filters to each row
   rows.forEach(row => {
     const name = (row.cells[3]?.innerText || '').toLowerCase();
     const date = row.dataset.date || '';
@@ -265,6 +271,7 @@ function filterTable() {
     row.dataset.visible = match ? 'true' : 'false';
   });
   
+  // Sort rows by ID based on selected order
   rows.sort((a,b) => {
     const ida = parseInt(a.dataset.id || '0', 10);
     const idb = parseInt(b.dataset.id || '0', 10);
@@ -272,6 +279,7 @@ function filterTable() {
   });
   rows.forEach(r => tbody.appendChild(r));
   
+  // Update filtered results and display count
   filteredRows = rows.filter(r => r.dataset.visible === 'true');
   const visible = filteredRows.length;
   const recordText = visible === 1 ? 'record' : 'records';
@@ -281,11 +289,13 @@ function filterTable() {
   displayPage();
 }
 
+// Display current page of filtered records with pagination
 function displayPage() {
     const recordsPerPage = recordsPerPageSelect.value;
     const showAll = recordsPerPage === 'all';
     const perPage = showAll ? filteredRows.length : parseInt(recordsPerPage);
     
+    // Calculate total pages based on filtered records
     const totalRecords = filteredRows.length;
     const totalPages = showAll ? 1 : Math.ceil(totalRecords / perPage);
     
@@ -294,33 +304,32 @@ function displayPage() {
     const startIndex = showAll ? 0 : (currentPage - 1) * perPage;
     const endIndex = showAll ? totalRecords : startIndex + perPage;
     
-    // Hide all rows first
+    // Hide all rows then show only current page rows
     Array.from(tbody.rows).forEach(row => row.style.display = 'none');
     
-    // Show only current page rows
     filteredRows.forEach((row, index) => {
         row.style.display = (index >= startIndex && index < endIndex) ? '' : 'none';
     });
     
-    // Update page info
+    // Update page information text
     const showing = totalRecords === 0 ? 0 : startIndex + 1;
     const to = Math.min(endIndex, totalRecords);
     pageInfo.textContent = `Showing ${showing} to ${to} of ${totalRecords} entries`;
     
-    // Update pagination
+    // Render pagination controls and reset checkboxes
     renderPagination(totalPages, showAll);
     
-    // Update select all checkbox
     selectAll.checked = false;
     updateDeleteButton();
 }
 
+// Render pagination controls with page numbers
 function renderPagination(totalPages, showAll) {
     pagination.innerHTML = '';
     
     if (showAll || totalPages <= 1) return;
     
-    // Previous button
+    // Add previous button
     const prevLi = document.createElement('li');
     prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
     prevLi.innerHTML = `<a class="page-link" href="#">Previous</a>`;
@@ -329,7 +338,7 @@ function renderPagination(totalPages, showAll) {
     }
     pagination.appendChild(prevLi);
     
-    // Page numbers
+    // Calculate visible page number range
     const maxVisible = 5;
     let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
     let endPage = Math.min(totalPages, startPage + maxVisible - 1);
@@ -338,6 +347,7 @@ function renderPagination(totalPages, showAll) {
         startPage = Math.max(1, endPage - maxVisible + 1);
     }
     
+    // Add first page and ellipsis if needed
     if (startPage > 1) {
         const firstLi = document.createElement('li');
         firstLi.className = 'page-item';
@@ -353,6 +363,7 @@ function renderPagination(totalPages, showAll) {
         }
     }
     
+    // Add page number buttons
     for (let i = startPage; i <= endPage; i++) {
         const li = document.createElement('li');
         li.className = `page-item ${i === currentPage ? 'active' : ''}`;
@@ -363,6 +374,7 @@ function renderPagination(totalPages, showAll) {
         pagination.appendChild(li);
     }
     
+    // Add last page and ellipsis if needed
     if (endPage < totalPages) {
         if (endPage < totalPages - 1) {
             const dots = document.createElement('li');
@@ -378,7 +390,7 @@ function renderPagination(totalPages, showAll) {
         pagination.appendChild(lastLi);
     }
     
-    // Next button
+    // Add next button
     const nextLi = document.createElement('li');
     nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
     nextLi.innerHTML = `<a class="page-link" href="#">Next</a>`;
@@ -388,6 +400,7 @@ function renderPagination(totalPages, showAll) {
     pagination.appendChild(nextLi);
 }
 
+// Update delete button state based on selected checkboxes
 function updateDeleteButton() {
     const visibleChecked = Array.from(document.querySelectorAll('.rowCheck:checked')).filter(
         chk => chk.closest('tr').style.display !== 'none'
@@ -395,6 +408,7 @@ function updateDeleteButton() {
     const count = visibleChecked.length;
     selectedCountSpan.textContent = count;
     
+    // Enable or disable delete button based on selection count
     if (count > 0) {
         deleteSelectedBtn.disabled = false;
         deleteSelectedBtn.style.opacity = '1';
@@ -406,27 +420,29 @@ function updateDeleteButton() {
     }
 }
 
+// Reset pagination when records per page changes
 recordsPerPageSelect.addEventListener('change', () => {
     currentPage = 1;
     displayPage();
 });
 
+// Attach filter event listeners and initialize table
 [searchName, filterDateFrom, filterDateUntil, sortOrder].forEach(el => el.addEventListener('input', filterTable));
 resetBtn.addEventListener('click', () => {
   searchName.value = ''; filterDateFrom.value = ''; filterDateUntil.value = ''; sortOrder.value = 'recent'; filterTable();
 });
 filterTable();
 
-/* Modal: Add another record row */
+// Add another record row to modal form
 document.getElementById('add-record-row').addEventListener('click', () => {
   const container = document.getElementById('record-fields');
   const template = container.querySelector('.record-row');
   const newRow = template.cloneNode(true);
   
-  // Clear all input values
+  // Clear input values in cloned row
   newRow.querySelectorAll('input, select').forEach(el => el.value = '');
   
-  // Attach change event listener to the name select
+  // Auto-populate business unit when employee is selected
   const nameSelect = newRow.querySelector('.name-select');
   const businessUnitField = newRow.querySelector('.business-unit-field');
   nameSelect.addEventListener('change', function() {
@@ -435,7 +451,7 @@ document.getElementById('add-record-row').addEventListener('click', () => {
     businessUnitField.value = unit;
   });
   
-  // Add remove button
+  // Add remove button for the new row
   const removeButtonCol = document.createElement('div');
   removeButtonCol.className = 'col-12 text-end mt-2';
   const removeBtn = document.createElement('button');
@@ -449,7 +465,7 @@ document.getElementById('add-record-row').addEventListener('click', () => {
   container.appendChild(newRow);
 });
 
-/* Reset modal for adding records */
+// Reset modal when adding new records
 document.getElementById('addBtn').addEventListener('click', () => {
   const form = document.getElementById('recordForm');
   form.reset();
@@ -457,6 +473,7 @@ document.getElementById('addBtn').addEventListener('click', () => {
   document.querySelector('#recordModal .modal-title').textContent = 'Add Time Record(s)';
   document.getElementById('add-record-row').style.display = 'block';
 
+  // Remove extra record rows leaving only first
   const container = document.getElementById('record-fields');
   while (container.children.length > 1) {
     container.removeChild(container.lastChild);
@@ -466,7 +483,7 @@ document.getElementById('addBtn').addEventListener('click', () => {
   if (removeBtn) removeBtn.parentElement.remove();
 });
 
-/* Event listeners for edit */
+// Attach edit button event listeners
 function attachEventListeners() {
   document.querySelectorAll('.editBtn').forEach(btn => {
     btn.removeEventListener('click', handleEdit);
@@ -474,6 +491,7 @@ function attachEventListeners() {
   });
 }
 
+// Handle edit button click - fetch and populate record data
 function handleEdit(e) {
   const id = e.target.closest('button').dataset.id;
   fetch('modals/get_record.php?id=' + encodeURIComponent(id))
@@ -485,6 +503,7 @@ function handleEdit(e) {
       const data = res.data;
       document.getElementById('recordID').value = data.ID;
       
+      // Reset form to single row
       const container = document.getElementById('record-fields');
       while (container.children.length > 1) {
         container.removeChild(container.lastChild);
@@ -494,6 +513,7 @@ function handleEdit(e) {
       const removeBtn = row.querySelector('.btn-danger');
       if (removeBtn) removeBtn.parentElement.remove();
       
+      // Populate form fields with record data
       row.querySelector('[name="Name[]"]').value = data.Name ?? '';
       row.querySelector('[name="BusinessUnit[]"]').value = data.BusinessUnit ?? '';
       row.querySelector('[name="Date[]"]').value = data.Date ?? '';
@@ -504,7 +524,7 @@ function handleEdit(e) {
       row.querySelector('[name="TimeOut[]"]').value = data.TimeOut ?? '';
       row.querySelector('[name="Hours[]"]').value = data.Hours ?? '';
       
-      // Show deductions as positive for editing
+      // Convert deductions to positive value for display
       const deductionValue = Math.abs(parseFloat(data.Deductions ?? 0));
       row.querySelector('[name="Deductions[]"]').value = deductionValue > 0 ? deductionValue : '';
       row.querySelector('[name="Extra[]"]').value = data.Extra ?? '';
@@ -517,7 +537,7 @@ function handleEdit(e) {
 
 attachEventListeners();
 
-/* Auto-populate business unit when selecting employee */
+// Auto-populate business unit when employee is selected
 document.querySelectorAll('.name-select').forEach(select => {
   select.addEventListener('change', function() {
     const selectedOption = this.options[this.selectedIndex];
@@ -530,7 +550,7 @@ document.querySelectorAll('.name-select').forEach(select => {
   });
 });
 
-/* Select all checkboxes (only visible ones on current page) */
+// Select all visible checkboxes on current page
 selectAll.addEventListener('change', () => {
     document.querySelectorAll('.rowCheck').forEach(chk => {
         if (chk.closest('tr').style.display !== 'none') {
@@ -540,19 +560,20 @@ selectAll.addEventListener('change', () => {
     updateDeleteButton();
 });
 
-/* Update delete button when individual checkboxes change */
+// Update delete button when individual checkboxes change
 tbody.addEventListener('change', (e) => {
     if (e.target.classList.contains('rowCheck')) {
         updateDeleteButton();
     }
 });
 
-/* Delete selected records */
+// Delete selected records with confirmation
 deleteSelectedBtn.addEventListener('click', () => {
     const ids = Array.from(document.querySelectorAll('.rowCheck:checked')).map(c => c.value);
     if (ids.length === 0) return alert('Please select at least one record.');
     if (!confirm(`Delete ${ids.length} selected record${ids.length>1?'s':''}?`)) return;
 
+    // Delete all selected records via API
     Promise.all(ids.map(id =>
         fetch('modals/delete_record.php', {
             method: 'POST',
@@ -566,7 +587,7 @@ deleteSelectedBtn.addEventListener('click', () => {
     .catch(() => alert('Server error'));
 });
 
-/* Handle Form Submit (Add/Edit) */
+// Handle form submission for add or edit
 document.getElementById('recordForm').addEventListener('submit', e => {
   e.preventDefault();
   const form = e.target;
@@ -574,6 +595,7 @@ document.getElementById('recordForm').addEventListener('submit', e => {
   const isEdit = !!data.get('ID');
   const action = isEdit ? 'modals/edit_record.php' : 'modals/add_record.php';
 
+  // Submit form data to appropriate endpoint
   fetch(action, { method:'POST', body: data })
     .then(r => r.json())
     .then(d => { 
